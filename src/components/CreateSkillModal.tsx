@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Sparkles, Loader2, Plus, Video, Layers, CheckCircle2 } from 'lucide-react';
+import { X, Sparkles, Loader2, Plus, Video, Upload, CheckCircle2, Image, Link, FileVideo, AlertCircle } from 'lucide-react';
 import { SkillVideo, SkillCategory, SkillLevel } from '../types';
 import { CATEGORIES_LIST } from '../data/skillsData';
+import { useAuth } from '../context/AuthContext';
+import { publishNewVideo } from '../services/dbOperations';
 import { sound } from '../utils/audio';
 
 interface CreateSkillModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddSkill: (skill: SkillVideo) => void;
+  onAddSkill: (skill: any) => void;
 }
 
 export const CreateSkillModal: React.FC<CreateSkillModalProps> = ({
@@ -16,59 +18,175 @@ export const CreateSkillModal: React.FC<CreateSkillModalProps> = ({
   onClose,
   onAddSkill,
 }) => {
-  const [mode, setMode] = useState<'ai' | 'manual'>('ai');
-  const [topic, setTopic] = useState('');
+  const { currentUser, userProfile } = useAuth();
+  const [mode, setMode] = useState<'upload' | 'ai'>('upload');
+  
+  // Video upload / manual fields
+  const [videoTitle, setVideoTitle] = useState('');
+  const [videoSummary, setVideoSummary] = useState('');
   const [category, setCategory] = useState<SkillCategory>('tech');
   const [level, setLevel] = useState<SkillLevel>('مبتدئ');
-  const [isLoading, setIsLoading] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [posterUrl, setPosterUrl] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  
+  // Interactive mini steps
+  const [step1Title, setStep1Title] = useState('');
+  const [step1Desc, setStep1Desc] = useState('');
+  const [step2Title, setStep2Title] = useState('');
+  const [step2Desc, setStep2Desc] = useState('');
 
-  // Manual fields
-  const [manualTitle, setManualTitle] = useState('');
-  const [manualSummary, setManualSummary] = useState('');
-  const [manualStep1, setManualStep1] = useState('');
-  const [manualStep2, setManualStep2] = useState('');
+  // AI Topic generator
+  const [aiTopic, setAiTopic] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleGenerateAiLesson = async (e: React.FormEvent) => {
+  // Handle local video file pick via HTML5 File Reader
+  const handleLocalVideoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (e.g. limit to 100MB for mobile performance)
+    if (file.size > 100 * 1024 * 1024) {
+      setErrorMsg('حجم ملف الفيديو كبير جداً. الحد الأقصى المسموح به هو 100 ميغابايت.');
+      return;
+    }
+
+    setErrorMsg(null);
+    const objectUrl = URL.createObjectURL(file);
+    setVideoUrl(objectUrl);
+    sound.playSuccess();
+  };
+
+  const handleLocalPosterFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    setPosterUrl(objectUrl);
+  };
+
+  const handlePublishManualVideo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic.trim() || isLoading) return;
+    if (!videoTitle.trim() || (!videoUrl.trim() && !posterUrl.trim())) {
+      setErrorMsg('يرجى كتابة عنوان الفيديو وتحديد ملف أو رابط الفيديو');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMsg(null);
+    sound.playPop();
+
+    const catLabel = CATEGORIES_LIST.find(c => c.id === category)?.label || 'مهارة عامة';
+    const parsedTags = tagsInput.split(/[\s,]+/).filter(t => t.trim().length > 0);
+
+    const steps = [];
+    if (step1Title.trim()) {
+      steps.push({
+        id: 's1',
+        stepNumber: 1,
+        title: step1Title.trim(),
+        description: step1Desc.trim() || 'الخطوة الأولى في تطبيق المهارة',
+      });
+    }
+    if (step2Title.trim()) {
+      steps.push({
+        id: 's2',
+        stepNumber: 2,
+        title: step2Title.trim(),
+        description: step2Desc.trim() || 'الخطوة الثانية في تطبيق المهارة',
+      });
+    }
+    if (steps.length === 0) {
+      steps.push({
+        id: 's1',
+        stepNumber: 1,
+        title: 'فهم وتطبيق المهارة عملياً',
+        description: videoSummary || 'تطبيق الخطوات الموضحة في الفيديو بدقة وبشكل تدريجي.',
+      });
+    }
+
+    try {
+      const finalVideoData = {
+        userId: currentUser?.uid || 'guest_creator',
+        creatorName: userProfile?.name || 'صانع مهارة',
+        creatorHandle: userProfile?.handle || '@creator',
+        creatorAvatar: userProfile?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+        creatorTitle: userProfile?.title || 'صانع محتوى تعليمي',
+        isVerified: userProfile?.isVerified || false,
+        title: videoTitle.trim(),
+        summary: videoSummary.trim() || 'فيديو تعليمي تفاعلي تم نشره في مجتمع مهارة.',
+        videoUrl: videoUrl.trim() || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        posterUrl: posterUrl.trim() || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80',
+        category,
+        categoryLabel: catLabel,
+        level,
+        durationSeconds: 45,
+        xpReward: 50,
+        tags: parsedTags.length > 0 ? parsedTags : ['مهارة_جديدة', 'تطبيق_عملي'],
+        captionHighlights: [
+          { time: 3, text: videoTitle.trim(), keywords: ['مهارة'] },
+          { time: 15, text: steps[0]?.title || 'خطوات التطبيق', keywords: ['تطبيق'] },
+        ],
+        steps,
+        quiz: [
+          {
+            id: 'q1',
+            question: `ما هو الهدف الأساسي من مهارة "${videoTitle.trim()}"؟`,
+            options: [
+              'التطبيق العملي واكتساب المهارة بنجاح',
+              'التنفيذ العشوائي دون تخطيط',
+              'تجاهل الخطوات الإرشادية',
+              'عدم الممارسة'
+            ],
+            correctIndex: 0,
+            explanation: 'التطبيق العملي الدقيق هو مفتاح إتقان المهارات في مهارة.',
+          },
+        ],
+        resources: [
+          {
+            id: 'r1',
+            title: 'دليل التطبيق والمراجع',
+            type: 'link',
+            content: 'ملخص تعليمي وخطوات تطبيق المهارة خطوة بخطوة.',
+            url: '#',
+          },
+        ],
+        sandboxType: 'none',
+      };
+
+      const published = await publishNewVideo(finalVideoData);
+      sound.playLevelUp();
+      onAddSkill(published);
+      onClose();
+    } catch (err: any) {
+      console.error('Error publishing video:', err);
+      setErrorMsg('حدث خطأ أثناء حفظ الفيديو في قاعدة البيانات السحابية.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateAiSkill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiTopic.trim() || isLoading) return;
 
     setIsLoading(true);
     sound.playPop();
+    setErrorMsg(null);
 
     try {
-      const res = await fetch('/api/ai/create-lesson', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: topic.trim(),
-          category,
-          level,
-        }),
-      });
-
-      if (!res.ok) throw new Error('API offline');
-      const data = await res.json();
-      if (data.lesson) {
-        sound.playLevelUp();
-        onAddSkill(data.lesson);
-        onClose();
-      }
-    } catch (err) {
-      console.log('Using local lesson generator in standalone mode:', err);
       const catLabel = CATEGORIES_LIST.find(c => c.id === category)?.label || 'مهارة عملية';
-      const newLesson: SkillVideo = {
-        id: `ai-skill-${Date.now()}`,
-        title: `كيف تتقن ${topic.trim()} في خطوات عملية سريعة`,
-        creator: {
-          name: 'مساعد مهارة التوليدي',
-          handle: '@mahara_ai',
-          avatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-          title: 'صانع محتوى مهارات ذكي',
-          isVerified: true,
-          followersCount: '150K',
-        },
+      const aiVideoData = {
+        userId: currentUser?.uid || 'ai_agent',
+        creatorName: 'مساعد مهارة التوليدي 🤖',
+        creatorHandle: '@mahara_ai',
+        creatorAvatar: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
+        creatorTitle: 'معلم الذكاء الاصطناعي',
+        isVerified: true,
+        title: `كيف تتقن ${aiTopic.trim()} في خطوات عملية سريعة`,
+        summary: `دليل سريع ومكثف لتعلم ${aiTopic.trim()} من خلال خطوات تطبيقية مباشرة قابلة للتنفيذ الفوري.`,
         videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
         posterUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80',
         category,
@@ -76,18 +194,17 @@ export const CreateSkillModal: React.FC<CreateSkillModalProps> = ({
         level,
         durationSeconds: 45,
         xpReward: 40,
-        tags: [topic.trim(), 'مهارات_عملية', 'تطبيق_سريع'],
-        summary: `دليل سريع ومكثف لتعلم ${topic.trim()} من خلال خطوات تطبيقية مباشرة قابلة للتنفيذ الفوري.`,
+        tags: [aiTopic.trim(), 'مهارات_عملية', 'تطبيق_سريع'],
         captionHighlights: [
-          { time: 5, text: `مرحباً بك في درس ${topic.trim()}`, keywords: ['مقدمة'] },
+          { time: 5, text: `مرحباً بك في درس ${aiTopic.trim()}`, keywords: ['مقدمة'] },
           { time: 20, text: 'ابدأ بالخطوة الأولى وطبقها بدقة', keywords: ['الخطوة الأولى'] },
         ],
         steps: [
           {
             id: 's1',
             stepNumber: 1,
-            title: `التهيئة وفهم المفهوم الأساسي لـ ${topic.trim()}`,
-            description: `افهم المبدأ الرئيسي في ${topic.trim()} وتأكد من تجهيز الأدوات والمتطلبات الأولية.`,
+            title: `التهيئة وفهم المفهوم الأساسي لـ ${aiTopic.trim()}`,
+            description: `افهم المبدأ الرئيسي في ${aiTopic.trim()} وتأكد من تجهيز الأدوات والمتطلبات الأولية.`,
             tip: 'تأكد من عدم تخطي مرحلة الإعداد المسبق قبل البدء بالتنفيذ الفعلي.',
           },
           {
@@ -97,18 +214,11 @@ export const CreateSkillModal: React.FC<CreateSkillModalProps> = ({
             description: 'ابدأ بتنفيذ التمرين الأول تدريجياً وتجنب التشتت بالخيارات الإضافية المعقدة.',
             tip: 'ركز على الإتقان البسيط قبل محاولة الوصول إلى الكمال.',
           },
-          {
-            id: 's3',
-            stepNumber: 3,
-            title: 'المراجعة واختبار النتيجة وجودة المخرج',
-            description: 'تحقق من صحة المخرجات وقارنها بالمعايير القياسية للتأكد من نجاح المهارة.',
-            tip: 'احفظ النتيجة في مفكرتك التعليمية للمراجعة اللاحقة.',
-          },
         ],
         quiz: [
           {
             id: 'q1',
-            question: `ما هي أهم خطوة أولى عند البدء في ${topic.trim()}؟`,
+            question: `ما هي أهم خطوة أولى عند البدء في ${aiTopic.trim()}؟`,
             options: [
               'التهيئة وتجهيز المتطلبات والأدوات بدقة',
               'التخطي المباشر للمراحل النهائية',
@@ -122,219 +232,194 @@ export const CreateSkillModal: React.FC<CreateSkillModalProps> = ({
         resources: [
           {
             id: 'r1',
-            title: `خريطة طريق مختصرة لـ ${topic.trim()}`,
+            title: 'ورقة مساعدة ومفاهيم أساسية',
             type: 'cheat_sheet',
-            content: `خطوات إتقان ${topic.trim()}:\n1. الإعداد والتهيئة\n2. التطبيق العملي اليومي\n3. التقييم والمراجعة المستمرة`,
+            content: `أهم النقاط الذهبية لتذكر أساسيات ${aiTopic.trim()}`,
+            url: '#',
           },
         ],
-        stats: { views: 10, likes: 5, saves: 3, shares: 1, completions: 2 },
-        comments: [],
+        sandboxType: 'prompt',
       };
 
+      const published = await publishNewVideo(aiVideoData);
       sound.playLevelUp();
-      onAddSkill(newLesson);
+      onAddSkill(published);
       onClose();
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg('تعذر إنشاء الفيديو التوليدي، يرجى المحاولة لاحقاً.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualTitle.trim()) return;
-
-    sound.playSuccess();
-    const newLesson: SkillVideo = {
-      id: `manual-skill-${Date.now()}`,
-      title: manualTitle.trim(),
-      creator: {
-        name: 'أنت (صانع مهارة)',
-        handle: '@you_creator',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-        title: 'مشارك مهارات',
-        isVerified: false,
-        followersCount: '1.2K',
-      },
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-      posterUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80',
-      category,
-      categoryLabel: CATEGORIES_LIST.find(c => c.id === category)?.label || 'مهارة عملية',
-      level,
-      durationSeconds: 45,
-      xpReward: 35,
-      tags: ['مهارة_جديدة', 'تطبيق_عملي'],
-      summary: manualSummary.trim() || 'مقطع تعليمي عملي موجز.',
-      captionHighlights: [
-        { time: 5, text: manualTitle, keywords: ['المهارة'] },
-      ],
-      steps: [
-        {
-          id: 'm1',
-          stepNumber: 1,
-          title: manualStep1 || 'الخطوة الأولى للتهيئة والبدء',
-          description: manualStep1 || 'تجهيز الأدوات والمتطلبات الأساسية للبدء بدقة.',
-        },
-        {
-          id: 'm2',
-          stepNumber: 2,
-          title: manualStep2 || 'التنفيذ العملي المباشر',
-          description: manualStep2 || 'تطبيق الخطوة المباشرة ومراجعة النتيجة.',
-        },
-      ],
-      quiz: [
-        {
-          id: 'mq1',
-          question: `ما هو أهم عامل لنجاح تطبيق ${manualTitle}؟`,
-          options: ['التركيز والدقة في الخطوات', 'الاستعجال وتخطي التهيئة', 'تجاهل النصائح', 'عدم المراجعة'],
-          correctIndex: 0,
-          explanation: 'الالتزام بتسلسل الخطوات يضمن الإتقان وتفادي الأخطاء.',
-        },
-      ],
-      resources: [
-        {
-          id: 'mr1',
-          title: 'ملخص الخطوات',
-          type: 'cheat_sheet',
-          content: `${manualStep1}\n${manualStep2}`,
-        },
-      ],
-      stats: { views: 1, likes: 1, saves: 1, shares: 0, completions: 0 },
-      comments: [],
-    };
-
-    onAddSkill(newLesson);
-    onClose();
-  };
-
-  const sampleAiIdeas = [
-    'كيف تبرمج قائمة تنقل Responsive بـ Tailwind',
-    'أمر ذكاء اصطناعي لكتابة خطة عمل أسبوعية',
-    'طريقة لحام سلك مقطوع بمكواة اللحام القصدير',
-    'قاعدة الصمت لـ 3 ثوانٍ قبل الإجابة في المقابلات',
-  ];
-
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-6">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-neutral-100"
+          className="relative w-full max-w-lg max-h-[90vh] bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
         >
           {/* Header */}
-          <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-900 sticky top-0 z-10">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-indigo-500 text-white flex items-center justify-center font-bold text-lg shadow-md shadow-emerald-950">
-                ✨
+          <div className="p-4 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                <Video className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-neutral-100 flex items-center gap-2">
-                  إضافة مهارة تعليمية جديدة
-                </h3>
-                <p className="text-xs text-neutral-400">
-                  توليد مقطع مهاري ذكي بواسطة Gemini أو كتابته يدوياً
-                </p>
+                <h3 className="text-sm sm:text-base font-bold text-white">نشر مهارة أو درس فيديو جديد</h3>
+                <p className="text-[10px] text-neutral-400">شارك معرفتك العملية أو ولّد درساً فورياً بالذكاء الاصطناعي</p>
               </div>
             </div>
 
             <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
+              onClick={() => {
+                sound.playPop();
+                onClose();
+              }}
+              className="p-1.5 rounded-full bg-neutral-800 text-neutral-400 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Mode Switcher */}
-          <div className="grid grid-cols-2 p-2 bg-neutral-950 gap-2 border-b border-neutral-800 text-xs font-semibold">
+          <div className="flex bg-neutral-950 p-1 border-b border-neutral-800 text-xs font-bold flex-shrink-0">
             <button
               type="button"
-              onClick={() => setMode('ai')}
-              className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
-                mode === 'ai'
-                  ? 'bg-indigo-600 text-white shadow-md'
+              onClick={() => {
+                sound.playPop();
+                setMode('upload');
+              }}
+              className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+                mode === 'upload'
+                  ? 'bg-emerald-500 text-black shadow-sm'
                   : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>توليد تلقائي فوري بالـ AI</span>
+              <Upload className="w-3.5 h-3.5" />
+              <span>رفع فيديو ونشر يدوي</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setMode('manual')}
-              className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
-                mode === 'manual'
-                  ? 'bg-neutral-800 text-white'
+              onClick={() => {
+                sound.playPop();
+                setMode('ai');
+              }}
+              className={`flex-1 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
+                mode === 'ai'
+                  ? 'bg-indigo-500 text-white shadow-sm'
                   : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>كتابة مهارة يدوية</span>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>توليد ذكي بالـ AI</span>
             </button>
           </div>
 
-          {/* Body Forms */}
-          <div className="p-5 overflow-y-auto flex-1 space-y-4">
-            {mode === 'ai' ? (
-              <form onSubmit={handleGenerateAiLesson} className="space-y-4 text-xs">
+          {/* Body Form */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 custom-scrollbar text-xs">
+            {errorMsg && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {mode === 'upload' ? (
+              <form onSubmit={handlePublishManualVideo} className="space-y-3.5">
                 <div>
-                  <label className="block text-neutral-300 font-semibold mb-1.5">
-                    عن ماذا تدور المهارة العملية؟ (Topic):
+                  <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                    عنوان المهارة / الفيديو *
                   </label>
                   <input
                     type="text"
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    placeholder="مثال: حيلة اختصار الوقت في Excel، أو فحص تسريب السباكة..."
                     required
-                    disabled={isLoading}
-                    className="w-full bg-neutral-950 border border-neutral-700 focus:border-indigo-500 focus:outline-none rounded-xl p-3 text-neutral-100 placeholder-neutral-500 text-xs sm:text-sm"
+                    value={videoTitle}
+                    onChange={(e) => setVideoTitle(e.target.value)}
+                    placeholder="مثال: كيف تبني واجهة مستخدم سريعة بـ Tailwind"
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white placeholder-neutral-500 focus:border-emerald-500 focus:outline-none"
                   />
                 </div>
 
-                {/* Ideas chips */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] text-neutral-400">أفكار مقترحة سريعة للتجربة:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {sampleAiIdeas.map((idea, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setTopic(idea)}
-                        className="px-2.5 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 text-[11px] border border-neutral-700/60"
-                      >
-                        {idea}
-                      </button>
-                    ))}
+                {/* Video File Picker or Link */}
+                <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-2xl space-y-2.5">
+                  <label className="block text-[11px] font-semibold text-neutral-300">
+                    ملف الفيديو (من الهاتف أو الحاسوب)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <label className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 bg-neutral-900 hover:bg-neutral-850 border border-dashed border-neutral-700 hover:border-emerald-500 rounded-xl cursor-pointer text-neutral-300 transition-colors">
+                      <FileVideo className="w-4 h-4 text-emerald-400" />
+                      <span>{videoUrl.startsWith('blob:') ? 'تم اختيار الفيديو بنجاح ✓' : 'اختر ملف فيديو (MP4/WebM)'}</span>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm,video/quicktime"
+                        onChange={handleLocalVideoFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-neutral-500">أو رابط فيديو مباشر:</span>
+                    <input
+                      type="url"
+                      value={videoUrl.startsWith('blob:') ? '' : videoUrl}
+                      onChange={(e) => setVideoUrl(e.target.value)}
+                      placeholder="https://example.com/video.mp4"
+                      className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1 text-[11px] text-white font-mono placeholder-neutral-600"
+                    />
                   </div>
                 </div>
 
+                {/* Poster image */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                    صورة الغلاف (Cover Image)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={posterUrl}
+                      onChange={(e) => setPosterUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white placeholder-neutral-500 text-[11px] font-mono"
+                    />
+                    <label className="p-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-700 rounded-xl cursor-pointer flex items-center justify-center text-neutral-300">
+                      <Image className="w-4 h-4 text-indigo-400" />
+                      <input type="file" accept="image/*" onChange={handleLocalPosterFile} className="hidden" />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Category & Level */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-neutral-300 font-semibold mb-1.5">التصنيف:</label>
+                    <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                      تصنيف المهارة
+                    </label>
                     <select
                       value={category}
                       onChange={(e) => setCategory(e.target.value as SkillCategory)}
-                      className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-2.5 text-neutral-200"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white"
                     >
-                      <option value="tech">برمجة وتقنية</option>
-                      <option value="ai">ذكاء اصطناعي وأتمتة</option>
-                      <option value="diy">صيانة وحِرف يدوية</option>
-                      <option value="languages">لغات وتواصل</option>
-                      <option value="business">أعمال ومالية</option>
-                      <option value="design">تصميم وإنتاج</option>
-                      <option value="life_hacks">مهارات حياتية</option>
+                      {CATEGORIES_LIST.filter(c => c.id !== 'all').map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-neutral-300 font-semibold mb-1.5">المستوى:</label>
+                    <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                      المستوى
+                    </label>
                     <select
                       value={level}
                       onChange={(e) => setLevel(e.target.value as SkillLevel)}
-                      className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-2.5 text-neutral-200"
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white"
                     >
                       <option value="مبتدئ">مبتدئ</option>
                       <option value="متوسط">متوسط</option>
@@ -343,89 +428,133 @@ export const CreateSkillModal: React.FC<CreateSkillModalProps> = ({
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-indigo-950/20 border border-indigo-500/30 rounded-xl text-indigo-200 text-xs leading-relaxed space-y-1">
-                  <div className="font-bold flex items-center gap-1 text-indigo-300">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                    <span>ماذا سيقوم الذكاء الاصطناعي بتوليده؟</span>
-                  </div>
-                  <div>
-                    سيبني لك بطاقة تعليمية كاملة: ملخص المهارة، خطوات التنفيذ المرقمة، اختبار سريع لاختبار المتعلمين، وقوالب قابلة للنسخ!
-                  </div>
+                {/* Summary */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                    الوصف المختصر
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={videoSummary}
+                    onChange={(e) => setVideoSummary(e.target.value)}
+                    placeholder="اشرح باختصار ماذا سيتعلم المشاهد بعد تطبيق المهارة..."
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white placeholder-neutral-500"
+                  />
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                    الهاشتاغات والوسوم
+                  </label>
+                  <input
+                    type="text"
+                    value={tagsInput}
+                    onChange={(e) => setTagsInput(e.target.value)}
+                    placeholder="#برمجة #تصميم #مهارات_عملية"
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white placeholder-neutral-500 font-mono text-[11px]"
+                  />
+                </div>
+
+                {/* Interactive Steps Builder */}
+                <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-2xl space-y-2">
+                  <span className="text-[11px] font-bold text-neutral-200">خطوات التطبيق التفاعلية (اختياري)</span>
+                  <input
+                    type="text"
+                    value={step1Title}
+                    onChange={(e) => setStep1Title(e.target.value)}
+                    placeholder="الخطوة 1: عنوان الخطوة الأولى"
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-white text-[11px]"
+                  />
+                  <input
+                    type="text"
+                    value={step2Title}
+                    onChange={(e) => setStep2Title(e.target.value)}
+                    placeholder="الخطوة 2: عنوان الخطوة الثانية"
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-2.5 py-1.5 text-white text-[11px]"
+                  />
                 </div>
 
                 <button
                   type="submit"
-                  disabled={!topic.trim() || isLoading}
-                  className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-950 transition-all"
+                  disabled={isLoading}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl shadow-lg shadow-emerald-950 transition-all flex items-center justify-center gap-2"
                 >
                   {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>جاري صياغة المهارة والخطوات الذكية...</span>
-                    </>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>توليد ونشر المهارة في الخلاصة</span>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>نشر الفيديو في مهارة الآن 🚀</span>
                     </>
                   )}
                 </button>
               </form>
             ) : (
-              /* Manual form */
-              <form onSubmit={handleManualSubmit} className="space-y-3.5 text-xs">
+              <form onSubmit={handleGenerateAiSkill} className="space-y-4">
                 <div>
-                  <label className="block text-neutral-300 font-semibold mb-1">عنوان المهارة:</label>
+                  <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                    ما هي المهارة التي ترغب بتوليد درس فوري لها؟ *
+                  </label>
                   <input
                     type="text"
-                    value={manualTitle}
-                    onChange={(e) => setManualTitle(e.target.value)}
-                    placeholder="مثال: كيفية فحص الفيوز المنزلي بأمان"
                     required
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-2.5 text-neutral-100"
+                    value={aiTopic}
+                    onChange={(e) => setAiTopic(e.target.value)}
+                    placeholder="مثال: كيفية إعداد إعلانات تيك توك، كتابة أوامر ChatGPT، صيانة محرك الدراجة..."
+                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white placeholder-neutral-500 focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-neutral-300 font-semibold mb-1">الملخص والفائدة المباشرة:</label>
-                  <textarea
-                    value={manualSummary}
-                    onChange={(e) => setManualSummary(e.target.value)}
-                    placeholder="اكتب نبذة سريعة توضح ما سيتعلمه المستخدم..."
-                    rows={2}
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-2.5 text-neutral-100"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                      التصنيف
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as SkillCategory)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white"
+                    >
+                      {CATEGORIES_LIST.filter(c => c.id !== 'all').map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-neutral-300 mb-1">
+                      المستوى
+                    </label>
+                    <select
+                      value={level}
+                      onChange={(e) => setLevel(e.target.value as SkillLevel)}
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-white"
+                    >
+                      <option value="مبتدئ">مبتدئ</option>
+                      <option value="متوسط">متوسط</option>
+                      <option value="متقدم">متقدم</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-neutral-300 font-semibold mb-1">الخطوة العملية الأولى:</label>
-                  <input
-                    type="text"
-                    value={manualStep1}
-                    onChange={(e) => setManualStep1(e.target.value)}
-                    placeholder="الخطوة 1..."
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-2.5 text-neutral-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-neutral-300 font-semibold mb-1">الخطوة العملية الثانية:</label>
-                  <input
-                    type="text"
-                    value={manualStep2}
-                    onChange={(e) => setManualStep2(e.target.value)}
-                    placeholder="الخطوة 2..."
-                    className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-2.5 text-neutral-100"
-                  />
+                <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs leading-relaxed">
+                  💡 سيقوم المعلم التوليدي بصياغة خطوات تطبيقية عملية، واختبار فوري متعدد الخيارات، ومراجع تطبيقية وحفظها مباشرة في قاعدة البيانات.
                 </div>
 
                 <button
                   type="submit"
-                  disabled={!manualTitle.trim()}
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all"
+                  disabled={isLoading}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-950 transition-all flex items-center justify-center gap-2"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>نشر المهارة يدوياً</span>
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>توليد ونشر الدرس فورياً ✨</span>
+                    </>
+                  )}
                 </button>
               </form>
             )}

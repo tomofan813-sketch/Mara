@@ -13,13 +13,14 @@ import {
   Zap,
   HelpCircle,
   Wrench,
-  RotateCcw,
-  CheckCircle2,
   UserPlus,
+  UserCheck,
   Gauge,
-  Layers,
+  Flag,
   ChevronDown,
   ChevronUp,
+  MoreVertical,
+  Check
 } from 'lucide-react';
 import { SkillVideo, ActionStep } from '../types';
 import { sound } from '../utils/audio';
@@ -33,8 +34,12 @@ interface VideoItemProps {
   onOpenSandbox: () => void;
   onOpenResources: () => void;
   onOpenComments: () => void;
+  onOpenProfile?: (creator: any) => void;
+  onReportVideo?: (skill: SkillVideo) => void;
   onToggleLike: (skillId: string) => void;
   onToggleSave: (skillId: string) => void;
+  onToggleFollow?: (creatorUid: string) => void;
+  isFollowed?: boolean;
   onShare: (skill: SkillVideo) => void;
   onNextVideo?: () => void;
   onPrevVideo?: () => void;
@@ -51,8 +56,12 @@ export const VideoItem: React.FC<VideoItemProps> = ({
   onOpenSandbox,
   onOpenResources,
   onOpenComments,
+  onOpenProfile,
+  onReportVideo,
   onToggleLike,
   onToggleSave,
+  onToggleFollow,
+  isFollowed = false,
   onShare,
   onNextVideo,
   onPrevVideo,
@@ -65,7 +74,6 @@ export const VideoItem: React.FC<VideoItemProps> = ({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(skill.durationSeconds || 45);
-  const [isFollowed, setIsFollowed] = useState(false);
   const [showHeartAnimation, setShowHeartAnimation] = useState(false);
   const [activeCaption, setActiveCaption] = useState<string>('');
 
@@ -105,16 +113,15 @@ export const VideoItem: React.FC<VideoItemProps> = ({
     setIsMuted(!isMuted);
   };
 
-  const handleSpeedChange迷 = (e: React.MouseEvent) => {
+  const handleSpeedChange = (e: React.MouseEvent) => {
     e.stopPropagation();
     sound.playPop();
     const rates = [1, 1.25, 1.5, 2, 0.75];
     const nextIndex = (rates.indexOf(playbackRate) + 1) % rates.length;
-    const newRate迷 = rates[nextIndex];
-    setPlaybackRate(newRate迷);
+    const newRate = rates[nextIndex];
+    setPlaybackRate(newRate);
     if (videoRef.current) {
-      videoRef.current.playbackRate拼 = newRate迷;
-      videoRef.current.playbackRate = newRate迷;
+      videoRef.current.playbackRate = newRate;
     }
   };
 
@@ -142,17 +149,11 @@ export const VideoItem: React.FC<VideoItemProps> = ({
     setTimeout(() => setShowHeartAnimation(false), 900);
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs肯 = Math.floor(seconds % 60);
-    return `${mins}:${secs肯 < 10 ? '0' : ''}${secs肯}`;
-  };
-
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div
-      className="relative w-full h-full max-w-md mx-auto bg-black rounded-none sm:rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center select-none border-0 sm:border border-neutral-800"
+      className="relative w-full h-full max-w-md mx-auto bg-black rounded-none sm:rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center select-none border-0 sm:border border-neutral-800"
       onDoubleClick={handleDoubleTap}
     >
       {/* HTML5 Video Element */}
@@ -172,13 +173,13 @@ export const VideoItem: React.FC<VideoItemProps> = ({
       />
 
       {/* Fallback gradient if video poster is loaded */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/85 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/90 pointer-events-none" />
 
       {/* Play/Pause Center Indicator */}
       {!isPlaying && (
         <button
           onClick={togglePlayPause}
-          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 text-white flex items-center justify-center cursor-pointer hover:scale-110 transition-transform z-10"
+          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white flex items-center justify-center cursor-pointer hover:scale-110 transition-transform z-10"
         >
           <Play className="w-8 h-8 fill-white pr-1" />
         </button>
@@ -202,17 +203,31 @@ export const VideoItem: React.FC<VideoItemProps> = ({
       {/* Top Header Overlays */}
       <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 text-xs">
         {/* Category & Level Badge */}
-        <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-white">
+        <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/15 text-white">
           <span className="text-emerald-400 font-bold">● {skill.categoryLabel}</span>
           <span className="text-neutral-500">•</span>
           <span className="text-neutral-300">{skill.level}</span>
         </div>
 
-        {/* Top Controls: Speed & Sound */}
+        {/* Top Controls: Speed, Report & Sound */}
         <div className="flex items-center gap-2">
+          {/* Report Button */}
+          {onReportVideo && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onReportVideo(skill);
+              }}
+              className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md hover:bg-rose-950/60 border border-white/10 text-neutral-400 hover:text-rose-400 flex items-center justify-center transition-colors"
+              title="إبلاغ عن محتوى"
+            >
+              <Flag className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {/* Speed Toggle */}
           <button
-            onClick={handleSpeedChange迷}
+            onClick={handleSpeedChange}
             className="bg-black/60 backdrop-blur-md hover:bg-black/80 px-2.5 py-1 rounded-full border border-white/10 text-white font-mono font-bold flex items-center gap-1 transition-colors"
             title="سرعة التشغيل"
           >
@@ -232,24 +247,25 @@ export const VideoItem: React.FC<VideoItemProps> = ({
 
       {/* Right Action Rail (Educational & Interaction Superpowers) */}
       <div className="absolute bottom-20 sm:bottom-16 right-3 flex flex-col items-center gap-3.5 z-20">
-        {/* Creator Avatar */}
-        <div className="relative group">
+        {/* Creator Avatar & Profile Trigger */}
+        <div className="relative group cursor-pointer" onClick={() => onOpenProfile && onOpenProfile(skill.creator)}>
           <img
             src={skill.creator.avatar}
             alt={skill.creator.name}
-            className="w-10 h-10 rounded-full object-cover border-2 border-emerald-400 shadow-lg"
+            className="w-10 h-10 rounded-full object-cover border-2 border-emerald-400 shadow-lg bg-neutral-800"
           />
-          {!isFollowed && (
+          {onToggleFollow && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                sound.playSuccess();
-                setIsFollowed(true);
+                onToggleFollow(skill.creator.handle);
               }}
-              className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 bg-emerald-500 rounded-full text-black flex items-center justify-center hover:scale-110 transition-transform"
-              title="متابعة المدرب"
+              className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center hover:scale-110 transition-transform ${
+                isFollowed ? 'bg-neutral-800 text-emerald-400 border border-emerald-400' : 'bg-emerald-500 text-black'
+              }`}
+              title={isFollowed ? 'تتابعه بالفعل' : 'متابعة المدرب'}
             >
-              <UserPlus className="w-2.5 h-2.5 stroke-[3]" />
+              {isFollowed ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : <UserPlus className="w-2.5 h-2.5 stroke-[3]" />}
             </button>
           )}
         </div>
@@ -264,16 +280,16 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           className="flex flex-col items-center gap-0.5 group"
         >
           <div className={`w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center transition-transform group-hover:scale-110 ${
-            skill.isLiked ? 'text-rose-500' : 'text-white'
+            skill.isLiked ? 'text-rose-500 border-rose-500/40' : 'text-white'
           }`}>
-            <Heart className={`w-5 h-5 ${skill.isLiked ? 'fill-rose-500' : ''}`} />
+            <Heart className={`w-5 h-5 ${skill.isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
           </div>
           <span className="text-[11px] font-bold text-white shadow-black drop-shadow">
             {(skill.stats.likes + (skill.isLiked ? 1 : 0)).toLocaleString()}
           </span>
         </button>
 
-        {/* 2. ACTION BLUEPRINT (خطوات التنفيذ) - The Killer Feature! */}
+        {/* 2. ACTION BLUEPRINT (خطوات التنفيذ) */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -387,9 +403,9 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           className="flex flex-col items-center gap-0.5 group"
         >
           <div className={`w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center transition-transform group-hover:scale-110 ${
-            skill.isSaved ? 'text-amber-400' : 'text-white'
+            skill.isSaved ? 'text-amber-400 border-amber-400/40' : 'text-white'
           }`}>
-            <Bookmark className={`w-4 h-4 ${skill.isSaved ? 'fill-amber-400' : ''}`} />
+            <Bookmark className={`w-4 h-4 ${skill.isSaved ? 'fill-amber-400 text-amber-400' : ''}`} />
           </div>
           <span className="text-[10px] font-bold text-neutral-300 drop-shadow">
             حفظ
@@ -445,51 +461,50 @@ export const VideoItem: React.FC<VideoItemProps> = ({
         )}
 
         {/* Creator Handle & Verified */}
-        <div className="flex items-center gap-2 pointer-events-auto">
-          <span className="font-bold text-sm text-white drop-shadow">
+        <div
+          className="flex items-center gap-2 pointer-events-auto cursor-pointer"
+          onClick={() => onOpenProfile && onOpenProfile(skill.creator)}
+        >
+          <span className="font-bold text-sm text-white drop-shadow hover:underline">
             {skill.creator.name}
           </span>
-          <span className="text-xs text-neutral-300 font-mono">
+          {skill.creator.isVerified && (
+            <span className="bg-emerald-500 text-black text-[9px] px-1 py-0.2 rounded font-bold">
+              ✓ موثق
+            </span>
+          )}
+          <span className="text-xs text-neutral-400 font-mono">
             {skill.creator.handle}
           </span>
-          {skill.creator.isVerified && (
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 fill-emerald-950" />
-          )}
         </div>
 
-        {/* Title */}
-        <h2 className="text-xs sm:text-sm font-bold leading-snug line-clamp-2 text-neutral-100 drop-shadow-md pointer-events-auto">
+        {/* Skill Title */}
+        <h2 className="text-sm sm:text-base font-extrabold text-white leading-snug drop-shadow line-clamp-2">
           {skill.title}
         </h2>
 
+        {/* Skill Summary */}
+        <p className="text-xs text-neutral-300 line-clamp-2 leading-relaxed drop-shadow">
+          {skill.summary}
+        </p>
+
         {/* Tags */}
-        <div className="flex flex-wrap gap-1 pt-0.5 pointer-events-auto">
-          {skill.tags.map((tag, idx) => (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {skill.tags.map((t, idx) => (
             <span
               key={idx}
-              className="text-[11px] font-medium text-teal-300 hover:text-teal-200 cursor-pointer drop-shadow"
+              className="text-[11px] font-semibold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/20"
             >
-              #{tag}
+              #{t}
             </span>
           ))}
         </div>
-
-        {/* Quick Trigger Pill to Action Steps */}
-        <div className="pt-1 pointer-events-auto">
-          <button
-            onClick={onOpenSteps}
-            className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-full text-amber-200 text-xs font-semibold backdrop-blur-md transition-colors"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>عرض خطوات العمل ({skill.steps.length} خطوات جاهزة للنسخ)</span>
-          </button>
-        </div>
       </div>
 
-      {/* Bottom Scrub Progress Bar */}
+      {/* Bottom Progress Bar */}
       <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20">
         <div
-          className="h-full bg-emerald-500 transition-all duration-100"
+          className="h-full bg-emerald-400 transition-all duration-100 ease-linear"
           style={{ width: `${progressPercent}%` }}
         />
       </div>

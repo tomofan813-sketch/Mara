@@ -10,10 +10,22 @@ import { ResourcesDrawer } from './components/ResourcesDrawer';
 import { CommentsDrawer } from './components/CommentsDrawer';
 import { SkillBagModal } from './components/SkillBagModal';
 import { CreateSkillModal } from './components/CreateSkillModal';
+import { AuthModal } from './components/AuthModal';
+import { UserProfileModal } from './components/UserProfileModal';
+import { AdminPanelModal } from './components/AdminPanelModal';
+import { NotificationsDrawer } from './components/NotificationsDrawer';
+import { ReportModal } from './components/ReportModal';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { 
+  getLiveVideos, 
+  toggleVideoLike, 
+  toggleSaveVideo, 
+  toggleFollowUser 
+} from './services/dbOperations';
 import { INITIAL_SKILLS } from './data/skillsData';
 import { SkillVideo, SkillCategory, UserProgress, ActionStep } from './types';
 import { sound } from './utils/audio';
-import { Check, Share2, Sparkles, Flame } from 'lucide-react';
+import { Check, Share2, Sparkles, Flame, RefreshCw } from 'lucide-react';
 
 const INITIAL_PROGRESS: UserProgress = {
   xp: 140,
@@ -45,18 +57,18 @@ const INITIAL_PROGRESS: UserProgress = {
   },
 };
 
-export default function App() {
-  const [skills, setSkills] = useState<SkillVideo[]>(() => {
-    const saved = localStorage.getItem('mahara_skills');
-    return saved ? JSON.parse(saved) : INITIAL_SKILLS;
-  });
+function MainAppContent() {
+  const { currentUser, userProfile, addXp } = useAuth();
 
+  // Primary Skills state from Firebase Firestore
+  const [skills, setSkills] = useState<SkillVideo[]>(INITIAL_SKILLS);
   const [userProgress, setUserProgress] = useState<UserProgress>(() => {
     const saved = localStorage.getItem('mahara_progress');
     return saved ? JSON.parse(saved) : INITIAL_PROGRESS;
   });
 
   const [selectedCategory, setSelectedCategory] = useState<SkillCategory>('all');
+  const [feedTab, setFeedTab] = useState<'foryou' | 'following'>('foryou');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -69,43 +81,98 @@ export default function App() {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isSkillBagOpen, setIsSkillBagOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedStepForAi, setSelectedStepForAi] = useState<ActionStep | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [reportingVideo, setReportingVideo] = useState<SkillVideo | null>(null);
 
-  // Toast notifications
+  const [selectedStepForAi, setSelectedStepForAi] = useState<ActionStep | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const containerRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef<number | null>(null);
   const lastScrollTime = useRef<number>(0);
 
-  // Save changes to localStorage
+  // Subscribe to live Firestore videos
   useEffect(() => {
-    localStorage.setItem('mahara_skills', JSON.stringify(skills));
-  }, [skills]);
+    const unsub = getLiveVideos((fireVideos) => {
+      if (fireVideos && fireVideos.length > 0) {
+        // Map Firestore doc to frontend SkillVideo interface
+        const mapped: SkillVideo[] = fireVideos.map((v) => ({
+          id: v.id,
+          title: v.title,
+          creator: {
+            name: v.creatorName,
+            handle: v.creatorHandle || `@${v.creatorName.replace(/\s+/g, '_')}`,
+            avatar: v.creatorAvatar,
+            title: v.creatorTitle || 'صانع مهارات',
+            isVerified: v.isVerified || false,
+            followersCount: '1.2K',
+          },
+          videoUrl: v.videoUrl,
+          posterUrl: v.posterUrl,
+          category: v.category as SkillCategory,
+          categoryLabel: v.categoryLabel || 'مهارة عامة',
+          level: v.level as any,
+          durationSeconds: v.durationSeconds || 45,
+          xpReward: v.xpReward || 50,
+          tags: v.tags || ['مهارة'],
+          summary: v.summary || '',
+          captionHighlights: v.captionHighlights || [],
+          steps: (v.steps || []) as any,
+          quiz: (v.quiz || []) as any,
+          resources: (v.resources || []) as any,
+          sandboxType: (v.sandboxType as any) || 'none',
+          stats: {
+            likes: v.likesCount || 0,
+            views: v.viewsCount || 100,
+            shares: v.sharesCount || 0,
+            saves: v.savesCount || 0,
+            completions: 35,
+          },
+          comments: [],
+          isLiked: currentUser ? v.likedBy?.includes(currentUser.uid) : false,
+          isSaved: currentUser ? v.savedBy?.includes(currentUser.uid) : false,
+        }));
+        setSkills(mapped);
+      }
+    });
 
+    return () => unsub();
+  }, [currentUser]);
+
+  // Sync userProgress with localStorage
   useEffect(() => {
     localStorage.setItem('mahara_progress', JSON.stringify(userProgress));
   }, [userProgress]);
 
-  // Filter skills
+  // Filter skills by category, following feed, and search term
   const filteredSkills = skills.filter((s) => {
     const matchesCategory = selectedCategory === 'all' || s.category === selectedCategory;
+    
+    // Following filter
+    let matchesFollowing = true;
+    if (feedTab === 'following') {
+      const followingList = userProfile?.following || [];
+      matchesFollowing = followingList.includes(s.creator.handle);
+    }
+
     const matchesSearch =
       !searchQuery.trim() ||
       s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase())) ||
       s.creator.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+
+    return matchesCategory && matchesFollowing && matchesSearch;
   });
 
-  // Ensure current index is valid
   const safeIndex = Math.min(Math.max(0, currentIndex), Math.max(0, filteredSkills.length - 1));
   const activeSkill = filteredSkills[safeIndex] || skills[0];
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleNextVideo = useCallback(() => {
@@ -122,10 +189,9 @@ export default function App() {
     }
   }, [currentIndex]);
 
-  // Keyboard navigation (Arrow keys)
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if an input is focused or modal open
       if (
         isStepsOpen ||
         isQuizOpen ||
@@ -134,7 +200,12 @@ export default function App() {
         isResourcesOpen ||
         isCommentsOpen ||
         isSkillBagOpen ||
-        isCreateModalOpen
+        isCreateModalOpen ||
+        isAuthModalOpen ||
+        isProfileModalOpen ||
+        isAdminPanelOpen ||
+        isNotificationsOpen ||
+        reportingVideo
       ) {
         return;
       }
@@ -161,23 +232,14 @@ export default function App() {
     isCommentsOpen,
     isSkillBagOpen,
     isCreateModalOpen,
+    isAuthModalOpen,
+    isProfileModalOpen,
+    isAdminPanelOpen,
+    isNotificationsOpen,
+    reportingVideo,
   ]);
 
-  // Wheel listener with debounce
-  const handleWheel = (e: React.WheelEvent) => {
-    const now = Date.now();
-    if (now - lastScrollTime.current < 450) return;
-
-    if (e.deltaY > 30) {
-      lastScrollTime.current = now;
-      handleNextVideo();
-    } else if (e.deltaY < -30) {
-      lastScrollTime.current = now;
-      handlePrevVideo();
-    }
-  };
-
-  // Touch swipe handling
+  // Touch Swipe for mobile vertical feed
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
   };
@@ -186,8 +248,10 @@ export default function App() {
     if (touchStartY.current === null) return;
     const touchEndY = e.changedTouches[0].clientY;
     const diff = touchStartY.current - touchEndY;
+    const now = Date.now();
 
-    if (Math.abs(diff) > 50) {
+    if (Math.abs(diff) > 50 && now - lastScrollTime.current > 400) {
+      lastScrollTime.current = now;
       if (diff > 0) {
         handleNextVideo();
       } else {
@@ -197,288 +261,333 @@ export default function App() {
     touchStartY.current = null;
   };
 
-  // Interactions
-  const handleToggleLike = (skillId: string) => {
-    setSkills(prev =>
-      prev.map(s => {
-        if (s.id === skillId) {
-          const isLiked = !s.isLiked;
-          return {
-            ...s,
-            isLiked,
-            stats: {
-              ...s.stats,
-              likes: s.stats.likes + (isLiked ? 1 : -1),
-            },
-          };
-        }
-        return s;
-      })
-    );
+  // Wheel scroll with throttle
+  const handleWheel = (e: React.WheelEvent) => {
+    const now = Date.now();
+    if (now - lastScrollTime.current > 600) {
+      lastScrollTime.current = now;
+      if (e.deltaY > 30) {
+        handleNextVideo();
+      } else if (e.deltaY < -30) {
+        handlePrevVideo();
+      }
+    }
   };
 
-  const handleToggleSave = (skillId: string) => {
-    const isAlreadySaved = userProgress.savedSkillIds.includes(skillId);
-    setUserProgress(prev => ({
-      ...prev,
-      savedSkillIds: isAlreadySaved
-        ? prev.savedSkillIds.filter(id => id !== skillId)
-        : [...prev.savedSkillIds, skillId],
-    }));
+  // Real Toggle Like with Firebase
+  const handleToggleLike = async (skillId: string) => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
 
+    const currentLiked = activeSkill?.isLiked || false;
+    // Optimistic update
     setSkills(prev =>
-      prev.map(s => {
-        if (s.id === skillId) {
-          return {
-            ...s,
-            isSaved: !isAlreadySaved,
-          };
-        }
-        return s;
-      })
+      prev.map(s => (s.id === skillId ? { ...s, isLiked: !s.isLiked } : s))
     );
 
-    showToast(isAlreadySaved ? 'تمت الإزالة من دفتر المهارات' : '🔖 تم حفظ خطوات المهارة في حقيبتك!');
+    try {
+      await toggleVideoLike(
+        skillId,
+        currentUser.uid,
+        userProfile?.name || 'مستخدم مهارة',
+        userProfile?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
+        activeSkill?.title || 'مهارة',
+        undefined
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Real Toggle Save with Firebase
+  const handleToggleSave = async (skillId: string) => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    const isCurrentlySaved = activeSkill?.isSaved || false;
+    setSkills(prev =>
+      prev.map(s => (s.id === skillId ? { ...s, isSaved: !s.isSaved } : s))
+    );
+
+    try {
+      await toggleSaveVideo(skillId, currentUser.uid, isCurrentlySaved);
+      showToast(isCurrentlySaved ? 'تمت إزالة المهارة من حقيبتك' : 'تم حفظ المهارة في حقيبتك بنجاح 🎒');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Real Toggle Follow
+  const handleToggleFollow = async (creatorHandle: string) => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    sound.playSuccess();
+    const isNowFollowing = await toggleFollowUser(currentUser.uid, creatorHandle);
+    showToast(isNowFollowing ? `بدأت بمتابعة ${creatorHandle} ✓` : `ألغيت متابعة ${creatorHandle}`);
   };
 
   const handleShare = (skill: SkillVideo) => {
     sound.playPop();
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(
-        `تعلم مهارة: ${skill.title} عبر منصة مهارة التعليمية 🚀\n${window.location.href}`
-      );
-      showToast('تم نسخ رابط بطاقة المهارة للمشاركة!');
+    if (navigator.share) {
+      navigator.share({
+        title: skill.title,
+        text: `تعلم "${skill.title}" على منصة مهارة (LearnTok)!`,
+        url: window.location.href,
+      }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      showToast('تم نسخ رابط المهارة إلى الحافظة بنجاح 📋');
     }
   };
 
-  const handleCompleteQuiz = (skillId: string, xpEarned: number) => {
-    setUserProgress(prev => {
-      const isAlreadyCompleted = prev.completedSkillIds.includes(skillId);
-      const newXp = prev.xp + xpEarned;
-      const newLevel = Math.floor(newXp / 100) + 1;
-      const levelTitles = ['مبتدئ فضولي', 'مستكشف مهارات نشط', 'ممارس تقني متمرس', 'خبير مهارات محترف', 'أستاذ مهارات معتمد'];
-      const newLevelTitle = levelTitles[Math.min(newLevel - 1, levelTitles.length - 1)];
-
-      return {
-        ...prev,
-        xp: newXp,
-        level: newLevel,
-        levelTitle: newLevelTitle,
-        completedSkillIds: isAlreadyCompleted ? prev.completedSkillIds : [...prev.completedSkillIds, skillId],
-        quizStats: {
-          totalAttempted: prev.quizStats.totalAttempted + 1,
-          totalCorrect: prev.quizStats.totalCorrect + 1,
-        },
-      };
-    });
-
-    setSkills(prev =>
-      prev.map(s => (s.id === skillId ? { ...s, isCompleted: true } : s))
-    );
-
-    showToast(`🎉 أحسنت! ربحت +${xpEarned} XP ونقاط إتقان جديدة!`);
-  };
-
-  const handleAddComment = (skillId: string, text: string) => {
-    const newComment = {
-      id: `c-${Date.now()}`,
-      userName: 'أنت (متعلم مهارات)',
-      userAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-      badge: 'متعلم نشط',
-      text,
-      likes: 0,
-      timestamp: 'الآن',
-    };
-
-    setSkills(prev =>
-      prev.map(s => (s.id === skillId ? { ...s, comments: [newComment, ...s.comments] } : s))
-    );
-
-    showToast('تمت إضافة تعليقك إلى مجتمع المهارة!');
-  };
-
-  const handleAddSkill = (newSkill: SkillVideo) => {
-    setSkills(prev => [newSkill, ...prev]);
-    setSelectedCategory('all');
-    setCurrentIndex(0);
-    showToast('✨ تم نشر المهارة الجديدة بنجاح في الخلاصة!');
-  };
-
-  const handleAskAiAboutStep = (step: ActionStep) => {
-    setSelectedStepForAi(step);
-    setIsStepsOpen(false);
-    setIsAiTutorOpen(true);
+  const handleQuizCompleted = (earnedXp: number) => {
+    addXp(earnedXp);
+    setUserProgress(prev => ({
+      ...prev,
+      xp: prev.xp + earnedXp,
+      quizStats: {
+        totalAttempted: prev.quizStats.totalAttempted + 1,
+        totalCorrect: prev.quizStats.totalCorrect + 1,
+      },
+    }));
+    showToast(`رائع! حصلت على +${earnedXp} نقطة خبرة (XP) 🎉`);
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-neutral-950 text-neutral-100 overflow-hidden select-none font-['Cairo',sans-serif]">
-      {/* Top Navbar */}
+    <div className="min-h-screen bg-black text-neutral-100 flex flex-col justify-between overflow-hidden font-sans select-none antialiased">
+      {/* Top Fixed Header Navbar */}
       <Navbar
         selectedCategory={selectedCategory}
         onSelectCategory={(cat) => {
           setSelectedCategory(cat);
           setCurrentIndex(0);
         }}
-        userProgress={userProgress}
-        onOpenSkillBag={() => setIsSkillBagOpen(true)}
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
-        searchQuery={searchQuery}
-        onSearchChange={(q) => {
-          setSearchQuery(q);
+        feedTab={feedTab}
+        onSelectFeedTab={(tab) => {
+          setFeedTab(tab);
           setCurrentIndex(0);
         }}
+        userProgress={userProgress}
+        onOpenSkillBag={() => setIsSkillBagOpen(true)}
+        onOpenCreateModal={() => {
+          if (!currentUser) {
+            setIsAuthModalOpen(true);
+          } else {
+            setIsCreateModalOpen(true);
+          }
+        }}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenNotifications={() => setIsNotificationsOpen(true)}
+        onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
-      {/* Main Vertical Feed Area */}
+      {/* Main Feed Container (Vertically Centered TikTok Style) */}
       <main
-        ref={containerRef}
-        onWheel={handleWheel}
+        className="flex-1 pt-24 pb-6 flex items-center justify-center relative w-full h-[calc(100vh-6rem)] overflow-hidden px-0 sm:px-4"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 w-full pt-[96px] pb-3 px-2 sm:px-4 flex items-center justify-center relative overflow-hidden"
+        onWheel={handleWheel}
       >
         {filteredSkills.length === 0 ? (
-          <div className="text-center p-8 bg-neutral-900 border border-neutral-800 rounded-2xl max-w-sm">
-            <Sparkles className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
-            <h3 className="font-bold text-sm text-neutral-100 mb-1">لا توجد مهارات في هذا التصنيف حالياً</h3>
-            <p className="text-xs text-neutral-400 mb-4">
-              يمكنك توليد مهارة جديدة فوراً باستخدام الذكاء الاصطناعي!
-            </p>
+          <div className="text-center p-8 bg-neutral-900/80 border border-neutral-800 rounded-3xl max-w-sm mx-auto shadow-2xl">
+            <Sparkles className="w-12 h-12 text-emerald-400 mx-auto mb-3 animate-pulse" />
+            <h3 className="text-base font-bold text-white mb-1">لا توجد مهارات في هذا القسم حالياً</h3>
+            <p className="text-xs text-neutral-400 mb-4">كن أول من ينشر مهارة أو درس فيديو في هذا التصنيف!</p>
             <button
-              onClick={() => setIsCreateModalOpen(true)}
-              className="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors"
+              onClick={() => {
+                if (!currentUser) setIsAuthModalOpen(true);
+                else setIsCreateModalOpen(true);
+              }}
+              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs transition-colors"
             >
-              + توليد مهارة ذكية
+              نشر مهارة الآن
             </button>
           </div>
         ) : (
-          <div className="w-full h-full max-w-md flex items-center justify-center">
-            <AnimatePresence mode="wait">
-              <motion.div
+          <div className="w-full h-full max-w-md mx-auto flex items-center justify-center">
+            {activeSkill && (
+              <VideoItem
                 key={activeSkill.id}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -30 }}
-                transition={{ duration: 0.25, ease: 'easeInOut' }}
-                className="w-full h-full"
-              >
-                <VideoItem
-                  skill={activeSkill}
-                  isActive={true}
-                  onOpenSteps={() => setIsStepsOpen(true)}
-                  onOpenQuiz={() => setIsQuizOpen(true)}
-                  onOpenAiTutor={() => {
-                    setSelectedStepForAi(null);
-                    setIsAiTutorOpen(true);
-                  }}
-                  onOpenSandbox={() => setIsSandboxOpen(true)}
-                  onOpenResources={() => setIsResourcesOpen(true)}
-                  onOpenComments={() => setIsCommentsOpen(true)}
-                  onToggleLike={handleToggleLike}
-                  onToggleSave={handleToggleSave}
-                  onShare={handleShare}
-                  onNextVideo={handleNextVideo}
-                  onPrevVideo={handlePrevVideo}
-                  hasNext={safeIndex < filteredSkills.length - 1}
-                  hasPrev={safeIndex > 0}
-                />
-              </motion.div>
-            </AnimatePresence>
+                skill={activeSkill}
+                isActive={true}
+                onOpenSteps={() => setIsStepsOpen(true)}
+                onOpenQuiz={() => setIsQuizOpen(true)}
+                onOpenAiTutor={() => {
+                  setSelectedStepForAi(null);
+                  setIsAiTutorOpen(true);
+                }}
+                onOpenSandbox={() => setIsSandboxOpen(true)}
+                onOpenResources={() => setIsResourcesOpen(true)}
+                onOpenComments={() => setIsCommentsOpen(true)}
+                onOpenProfile={() => setIsProfileModalOpen(true)}
+                onReportVideo={(v) => setReportingVideo(v)}
+                onToggleLike={handleToggleLike}
+                onToggleSave={handleToggleSave}
+                onToggleFollow={handleToggleFollow}
+                isFollowed={userProfile?.following?.includes(activeSkill.creator.handle)}
+                onShare={handleShare}
+                onNextVideo={handleNextVideo}
+                onPrevVideo={handlePrevVideo}
+                hasNext={currentIndex < filteredSkills.length - 1}
+                hasPrev={currentIndex > 0}
+              />
+            )}
           </div>
         )}
-
-        {/* Global Toast Message */}
-        <AnimatePresence>
-          {toastMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-neutral-900/95 border border-emerald-500/40 text-emerald-300 text-xs font-semibold px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2"
-            >
-              <Check className="w-4 h-4 text-emerald-400" />
-              <span>{toastMessage}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </main>
 
-      {/* DRAWERS & MODALS */}
+      {/* Floating Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-neutral-900 border border-emerald-500/40 text-emerald-300 px-4 py-2.5 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 backdrop-blur-md"
+          >
+            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Action Steps Blueprint Drawer */}
       {activeSkill && (
-        <>
-          <ActionStepsDrawer
-            isOpen={isStepsOpen}
-            onClose={() => setIsStepsOpen(false)}
-            skill={activeSkill}
-            onAskAiAboutStep={handleAskAiAboutStep}
-            onOpenSandbox={() => {
-              setIsStepsOpen(false);
-              setIsSandboxOpen(true);
-            }}
-          />
-
-          <QuizDrawer
-            isOpen={isQuizOpen}
-            onClose={() => setIsQuizOpen(false)}
-            skill={activeSkill}
-            onCompleteQuiz={handleCompleteQuiz}
-          />
-
-          <AiTutorDrawer
-            isOpen={isAiTutorOpen}
-            onClose={() => {
-              setIsAiTutorOpen(false);
-              setSelectedStepForAi(null);
-            }}
-            skill={activeSkill}
-            initialStepPrompt={selectedStepForAi}
-          />
-
-          <SandboxDrawer
-            isOpen={isSandboxOpen}
-            onClose={() => setIsSandboxOpen(false)}
-            skill={activeSkill}
-          />
-
-          <ResourcesDrawer
-            isOpen={isResourcesOpen}
-            onClose={() => setIsResourcesOpen(false)}
-            skill={activeSkill}
-          />
-
-          <CommentsDrawer
-            isOpen={isCommentsOpen}
-            onClose={() => setIsCommentsOpen(false)}
-            skill={activeSkill}
-            onAddComment={handleAddComment}
-          />
-        </>
+        <ActionStepsDrawer
+          isOpen={isStepsOpen}
+          onClose={() => setIsStepsOpen(false)}
+          skill={activeSkill}
+          onAskAiAboutStep={(step) => {
+            setSelectedStepForAi(step);
+            setIsStepsOpen(false);
+            setIsAiTutorOpen(true);
+          }}
+        />
       )}
 
-      {/* Skill Bag / Notebook Modal */}
+      {/* Instant Interactive Quiz Drawer */}
+      {activeSkill && (
+        <QuizDrawer
+          isOpen={isQuizOpen}
+          onClose={() => setIsQuizOpen(false)}
+          skill={activeSkill}
+          onQuizComplete={handleQuizCompleted}
+        />
+      )}
+
+      {/* AI Tutor Chat Drawer */}
+      {activeSkill && (
+        <AiTutorDrawer
+          isOpen={isAiTutorOpen}
+          onClose={() => {
+            setIsAiTutorOpen(false);
+            setSelectedStepForAi(null);
+          }}
+          skill={activeSkill}
+          initialStepContext={selectedStepForAi}
+        />
+      )}
+
+      {/* Live Code / Sandbox Drawer */}
+      {activeSkill && (
+        <SandboxDrawer
+          isOpen={isSandboxOpen}
+          onClose={() => setIsSandboxOpen(false)}
+          skill={activeSkill}
+        />
+      )}
+
+      {/* Resources & Cheat Sheets Drawer */}
+      {activeSkill && (
+        <ResourcesDrawer
+          isOpen={isResourcesOpen}
+          onClose={() => setIsResourcesOpen(false)}
+          skill={activeSkill}
+        />
+      )}
+
+      {/* Comments & Discussion Drawer */}
+      {activeSkill && (
+        <CommentsDrawer
+          isOpen={isCommentsOpen}
+          onClose={() => setIsCommentsOpen(false)}
+          skill={activeSkill}
+        />
+      )}
+
+      {/* Skill Bag / Saved Skills Modal */}
       <SkillBagModal
         isOpen={isSkillBagOpen}
         onClose={() => setIsSkillBagOpen(false)}
-        allSkills={skills}
+        savedSkills={skills.filter(s => s.isSaved)}
         userProgress={userProgress}
-        onSelectSkill={(skill) => {
-          const targetIndex = filteredSkills.findIndex(s => s.id === skill.id);
+        onSelectSkill={(skillId) => {
+          const targetIndex = filteredSkills.findIndex(s => s.id === skillId);
           if (targetIndex !== -1) {
             setCurrentIndex(targetIndex);
-          } else {
-            setSelectedCategory('all');
-            const allIdx = skills.findIndex(s => s.id === skill.id);
-            setCurrentIndex(Math.max(0, allIdx));
           }
+          setIsSkillBagOpen(false);
         }}
       />
 
-      {/* Create / Generate Skill Modal */}
+      {/* Create / Publish New Skill Modal */}
       <CreateSkillModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onAddSkill={handleAddSkill}
+        onAddSkill={(newSkill) => {
+          showToast('تم نشر مهارة جديدة بنجاح في مهارة! 🚀');
+        }}
+      />
+
+      {/* User Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        userSkills={skills.filter(s => s.creator.name === userProfile?.name || s.creator.handle === userProfile?.handle)}
+      />
+
+      {/* Admin Panel Modal */}
+      <AdminPanelModal
+        isOpen={isAdminPanelOpen}
+        onClose={() => setIsAdminPanelOpen(false)}
+      />
+
+      {/* Notifications Drawer */}
+      <NotificationsDrawer
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+      />
+
+      {/* Video Reporting Modal */}
+      <ReportModal
+        isOpen={!!reportingVideo}
+        onClose={() => setReportingVideo(null)}
+        video={reportingVideo}
+        onSuccess={(msg) => showToast(msg)}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainAppContent />
+    </AuthProvider>
   );
 }

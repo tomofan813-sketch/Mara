@@ -1,42 +1,116 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Heart, Send, MessageSquare, ThumbsUp, Sparkles, CheckCircle2 } from 'lucide-react';
-import { SkillVideo, Comment } from '../types';
+import { X, Heart, Send, MessageSquare, Trash2, Reply } from 'lucide-react';
+import { VideoDoc, CommentDoc } from '../services/firebase';
+import { useAuth } from '../context/AuthContext';
+import { addVideoComment, videosCol } from '../services/dbOperations';
+import { db } from '../services/firebase';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  increment, 
+  arrayUnion, 
+  arrayRemove 
+} from 'firebase/firestore';
 import { sound } from '../utils/audio';
 
 interface CommentsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  skill: SkillVideo;
-  onAddComment: (skillId: string, text: string) => void;
+  skill: { id: string; title: string; userId?: string; creator?: { name?: string } };
 }
 
 export const CommentsDrawer: React.FC<CommentsDrawerProps> = ({
   isOpen,
   onClose,
   skill,
-  onAddComment,
 }) => {
+  const { currentUser, userProfile } = useAuth();
+  const [comments, setComments] = useState<CommentDoc[]>([]);
   const [commentText, setCommentText] = useState('');
-  const [likesMap, setLikesMap] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen || !skill?.id) return;
+
+    const subCol = collection(db, 'videos', skill.id, 'comments');
+    const unsub = onSnapshot(subCol, (snap) => {
+      const list: CommentDoc[] = [];
+      snap.forEach((d) => {
+        list.push({ id: d.id, ...d.data() } as CommentDoc);
+      });
+      // Sort newest first
+      list.sort((a, b) => {
+        const tA = a.createdAt?.seconds || 0;
+        const tB = b.createdAt?.seconds || 0;
+        return tB - tA;
+      });
+      setComments(list);
+      setIsLoading(false);
+    });
+
+    return () => unsub();
+  }, [isOpen, skill?.id]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || !currentUser || !userProfile) return;
 
     sound.playPop();
-    onAddComment(skill.id, commentText.trim());
+    const textToSend = commentText.trim();
     setCommentText('');
+
+    try {
+      await addVideoComment(
+        skill.id,
+        {
+          uid: currentUser.uid,
+          name: userProfile.name || 'مستخدم مهارة',
+          avatar: userProfile.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+          badge: userProfile.title || 'متعلم نشط',
+        },
+        textToSend,
+        skill.userId
+      );
+      sound.playSuccess();
+    } catch (err) {
+      console.error('Error adding comment:', err);
+    }
   };
 
-  const toggleLike = (id: string) => {
+  const toggleCommentLike = async (comment: CommentDoc) => {
+    if (!currentUser) return;
     sound.playPop();
-    setLikesMap(prev => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
+    const ref = doc(db, 'videos', skill.id, 'comments', comment.id);
+    const hasLiked = comment.likedBy?.includes(currentUser.uid);
+
+    if (hasLiked) {
+      await updateDoc(ref, {
+        likedBy: arrayRemove(currentUser.uid),
+        likesCount: increment(-1),
+      });
+    } else {
+      await updateDoc(ref, {
+        likedBy: arrayUnion(currentUser.uid),
+        likesCount: increment(1),
+      });
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (window.confirm('هل تريد حذف هذا التعليق؟')) {
+      sound.playPop();
+      await deleteDoc(doc(db, 'videos', skill.id, 'comments', commentId));
+      await updateDoc(doc(db, 'videos', skill.id), {
+        commentsCount: increment(-1),
+      });
+    }
   };
 
   return (
@@ -46,7 +120,7 @@ export const CommentsDrawer: React.FC<CommentsDrawerProps> = ({
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-neutral-900 border border-neutral-800 rounded-t-2xl sm:rounded-2xl w-full max-w-lg h-[80vh] flex flex-col shadow-2xl overflow-hidden text-neutral-100"
+          className="bg-neutral-900 border border-neutral-800 rounded-t-3xl sm:rounded-3xl w-full max-w-lg h-[80vh] flex flex-col shadow-2xl overflow-hidden text-neutral-100"
         >
           {/* Header */}
           <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-900 sticky top-0 z-10">
@@ -55,20 +129,23 @@ export const CommentsDrawer: React.FC<CommentsDrawerProps> = ({
                 💬
               </div>
               <div>
-                <h3 className="font-bold text-base text-neutral-100 flex items-center gap-2">
+                <h3 className="font-bold text-sm sm:text-base text-neutral-100 flex items-center gap-2">
                   مجتمع النقاش وتبادل الخبرات
                   <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full font-medium">
-                    {skill.comments.length} تعليقات
+                    {comments.length}
                   </span>
                 </h3>
-                <p className="text-xs text-neutral-400">
+                <p className="text-[11px] text-neutral-400">
                   اطرح استفساراتك وشارك تجارب تطبيق المهارة
                 </p>
               </div>
             </div>
 
             <button
-              onClick={onClose}
+              onClick={() => {
+                sound.playPop();
+                onClose();
+              }}
               className="w-8 h-8 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white flex items-center justify-center transition-colors"
             >
               <X className="w-4 h-4" />
@@ -76,54 +153,70 @@ export const CommentsDrawer: React.FC<CommentsDrawerProps> = ({
           </div>
 
           {/* Comments List */}
-          <div className="p-4 overflow-y-auto flex-1 space-y-3.5 bg-neutral-950/40">
-            {skill.comments.length === 0 ? (
-              <div className="text-center py-12 text-neutral-500 text-xs">
+          <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-neutral-950/40 custom-scrollbar">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : comments.length === 0 ? (
+              <div className="text-center py-16 text-neutral-500 text-xs">
                 كن أول من يشارك تجربة تطبيق هذه المهارة أو يطرح سؤالاً!
               </div>
             ) : (
-              skill.comments.map((comment) => {
-                const isLiked = !!likesMap[comment.id];
-                const likeCount = comment.likes + (isLiked ? 1 : 0);
+              comments.map((comment) => {
+                const isLiked = currentUser ? comment.likedBy?.includes(currentUser.uid) : false;
+                const isOwner = currentUser?.uid === comment.userId || userProfile?.role === 'admin';
 
                 return (
                   <div
                     key={comment.id}
-                    className="p-3.5 rounded-xl bg-neutral-800/50 border border-neutral-800 space-y-2"
+                    className="p-3.5 rounded-2xl bg-neutral-900 border border-neutral-800/90 space-y-2"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2.5">
                         <img
-                          src={comment.userAvatar}
+                          src={comment.userAvatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80'}
                           alt={comment.userName}
-                          className="w-8 h-8 rounded-full object-cover border border-neutral-700"
+                          className="w-8 h-8 rounded-full object-cover border border-neutral-700 bg-neutral-800"
                         />
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-xs text-neutral-200">
+                            <span className="font-bold text-xs text-neutral-200">
                               {comment.userName}
                             </span>
-                            {comment.badge && (
-                              <span className="text-[10px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.5 rounded font-medium">
-                                {comment.badge}
+                            {comment.userBadge && (
+                              <span className="text-[10px] bg-emerald-500/15 text-emerald-400 px-1.5 py-0.2 rounded font-medium">
+                                {comment.userBadge}
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-neutral-500">{comment.timestamp}</span>
+                          <span className="text-[10px] text-neutral-500">الآن في مهارة</span>
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => toggleLike(comment.id)}
-                        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors ${
-                          isLiked
-                            ? 'text-rose-400 bg-rose-500/10'
-                            : 'text-neutral-400 hover:text-neutral-200'
-                        }`}
-                      >
-                        <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-rose-400' : ''}`} />
-                        <span>{likeCount}</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleCommentLike(comment)}
+                          className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors ${
+                            isLiked
+                              ? 'text-rose-400 bg-rose-500/10'
+                              : 'text-neutral-400 hover:text-neutral-200'
+                          }`}
+                        >
+                          <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-rose-400 text-rose-400' : ''}`} />
+                          <span>{comment.likesCount || 0}</span>
+                        </button>
+
+                        {isOwner && (
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="p-1 text-neutral-500 hover:text-rose-400 rounded transition-colors"
+                            title="حذف التعليق"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <p className="text-xs text-neutral-300 leading-relaxed pr-10">

@@ -1,0 +1,6 @@
+{
+  "name": "مهارة - منصة المهارات والمحتوى التعليمي",
+  "description": "منصة فيديوهات تعليمية تفاعلية مستوحاة من نمط المقاطع القصيرة، تركز على اكتساب المهارات العملية مع ملخصات وخطوات تنفيذية واختبارات ومساعد ذكي.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

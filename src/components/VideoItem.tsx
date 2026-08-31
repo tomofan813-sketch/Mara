@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Play,
-  Pause,
   Volume2,
   VolumeX,
   Heart,
@@ -12,17 +11,15 @@ import {
   Sparkles,
   Zap,
   HelpCircle,
-  Wrench,
   UserPlus,
-  UserCheck,
   Gauge,
   Flag,
   ChevronDown,
   ChevronUp,
-  MoreVertical,
-  Check
+  Check,
+  Wrench
 } from 'lucide-react';
-import { SkillVideo, ActionStep } from '../types';
+import { SkillVideo } from '../types';
 import { sound } from '../utils/audio';
 
 interface VideoItemProps {
@@ -172,16 +169,16 @@ export const VideoItem: React.FC<VideoItemProps> = ({
         className="w-full h-full object-cover cursor-pointer"
       />
 
-      {/* Fallback gradient if video poster is loaded */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/90 pointer-events-none" />
+      {/* Subtle overlay gradients for pristine contrast */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/85 pointer-events-none" />
 
       {/* Play/Pause Center Indicator */}
       {!isPlaying && (
         <button
           onClick={togglePlayPause}
-          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white flex items-center justify-center cursor-pointer hover:scale-110 transition-transform z-10"
+          className="absolute inset-0 m-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white flex items-center justify-center cursor-pointer hover:scale-110 transition-transform z-10 shadow-xl"
         >
-          <Play className="w-8 h-8 fill-white pr-1" />
+          <Play className="w-6 h-6 sm:w-8 sm:h-8 fill-white pr-0.5" />
         </button>
       )}
 
@@ -193,24 +190,24 @@ export const VideoItem: React.FC<VideoItemProps> = ({
             animate={{ scale: 1.3, opacity: 1 }}
             exit={{ scale: 1.8, opacity: 0 }}
             transition={{ duration: 0.7 }}
-            className="absolute inset-0 m-auto w-24 h-24 text-rose-500 flex items-center justify-center pointer-events-none z-20"
+            className="absolute inset-0 m-auto w-20 h-20 text-rose-500 flex items-center justify-center pointer-events-none z-20"
           >
-            <Heart className="w-24 h-24 fill-rose-500 drop-shadow-2xl" />
+            <Heart className="w-20 h-20 fill-rose-500 drop-shadow-2xl" />
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Top Header Overlays */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10 text-xs">
+      <div className="absolute top-2.5 sm:top-3.5 left-2.5 right-2.5 sm:left-4 sm:right-4 flex items-center justify-between z-20 text-xs">
         {/* Category & Level Badge */}
-        <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/15 text-white">
+        <div className="flex items-center gap-1 sm:gap-1.5 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/15 text-white text-[11px] sm:text-xs">
           <span className="text-emerald-400 font-bold">● {skill.categoryLabel}</span>
           <span className="text-neutral-500">•</span>
           <span className="text-neutral-300">{skill.level}</span>
         </div>
 
         {/* Top Controls: Speed, Report & Sound */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Report Button */}
           {onReportVideo && (
             <button
@@ -218,7 +215,7 @@ export const VideoItem: React.FC<VideoItemProps> = ({
                 e.stopPropagation();
                 onReportVideo(skill);
               }}
-              className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md hover:bg-rose-950/60 border border-white/10 text-neutral-400 hover:text-rose-400 flex items-center justify-center transition-colors"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/70 backdrop-blur-md hover:bg-rose-950/70 border border-white/10 text-neutral-400 hover:text-rose-400 flex items-center justify-center transition-colors"
               title="إبلاغ عن محتوى"
             >
               <Flag className="w-3.5 h-3.5" />
@@ -228,7 +225,7 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           {/* Speed Toggle */}
           <button
             onClick={handleSpeedChange}
-            className="bg-black/60 backdrop-blur-md hover:bg-black/80 px-2.5 py-1 rounded-full border border-white/10 text-white font-mono font-bold flex items-center gap-1 transition-colors"
+            className="bg-black/70 backdrop-blur-md hover:bg-black/90 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-white/10 text-white font-mono font-bold text-[10px] sm:text-xs flex items-center gap-1 transition-colors"
             title="سرعة التشغيل"
           >
             <Gauge className="w-3 h-3 text-amber-400" />
@@ -238,21 +235,22 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           {/* Mute Toggle */}
           <button
             onClick={toggleMute}
-            className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-md hover:bg-black/80 border border-white/10 text-white flex items-center justify-center transition-colors"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/70 backdrop-blur-md hover:bg-black/90 border border-white/10 text-white flex items-center justify-center transition-colors"
+            title={isMuted ? 'إلغاء كتم الصوت' : 'كتم الصوت'}
           >
-            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
           </button>
         </div>
       </div>
 
-      {/* Right Action Rail (Educational & Interaction Superpowers) */}
-      <div className="absolute bottom-20 sm:bottom-16 right-3 flex flex-col items-center gap-3.5 z-20">
+      {/* Side Action Rail (Educational & Interaction Superpowers) */}
+      <div className="absolute bottom-4 sm:bottom-6 left-2 sm:left-3 flex flex-col items-center gap-1.5 sm:gap-2.5 z-20">
         {/* Creator Avatar & Profile Trigger */}
-        <div className="relative group cursor-pointer" onClick={() => onOpenProfile && onOpenProfile(skill.creator)}>
+        <div className="relative group cursor-pointer mb-0.5" onClick={() => onOpenProfile && onOpenProfile(skill.creator)}>
           <img
             src={skill.creator.avatar}
             alt={skill.creator.name}
-            className="w-10 h-10 rounded-full object-cover border-2 border-emerald-400 shadow-lg bg-neutral-800"
+            className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full object-cover border-2 border-emerald-400 shadow-lg bg-neutral-800"
           />
           {onToggleFollow && (
             <button
@@ -260,7 +258,7 @@ export const VideoItem: React.FC<VideoItemProps> = ({
                 e.stopPropagation();
                 onToggleFollow(skill.creator.handle);
               }}
-              className={`absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center hover:scale-110 transition-transform ${
+              className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center hover:scale-110 transition-transform ${
                 isFollowed ? 'bg-neutral-800 text-emerald-400 border border-emerald-400' : 'bg-emerald-500 text-black'
               }`}
               title={isFollowed ? 'تتابعه بالفعل' : 'متابعة المدرب'}
@@ -279,12 +277,12 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           }}
           className="flex flex-col items-center gap-0.5 group"
         >
-          <div className={`w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center transition-transform group-hover:scale-110 ${
+          <div className={`w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 flex items-center justify-center transition-transform group-hover:scale-110 shadow-md ${
             skill.isLiked ? 'text-rose-500 border-rose-500/40' : 'text-white'
           }`}>
-            <Heart className={`w-5 h-5 ${skill.isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
+            <Heart className={`w-4 h-4 sm:w-4.5 sm:h-4.5 ${skill.isLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
           </div>
-          <span className="text-[11px] font-bold text-white shadow-black drop-shadow">
+          <span className="text-[10px] sm:text-[11px] font-bold text-white shadow-black drop-shadow">
             {(skill.stats.likes + (skill.isLiked ? 1 : 0)).toLocaleString()}
           </span>
         </button>
@@ -298,11 +296,11 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           }}
           className="flex flex-col items-center gap-0.5 group relative"
         >
-          <div className="w-10 h-10 rounded-full bg-amber-500 text-black font-extrabold flex items-center justify-center shadow-lg shadow-amber-950/80 transition-transform group-hover:scale-110 animate-pulse">
-            <Zap className="w-5 h-5 fill-black" />
+          <div className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-amber-500 text-black font-extrabold flex items-center justify-center shadow-lg shadow-amber-950/80 transition-transform group-hover:scale-110">
+            <Zap className="w-4 h-4 sm:w-4.5 sm:h-4.5 fill-black" />
           </div>
-          <span className="text-[10px] font-bold text-amber-300 drop-shadow">
-            الخطوات ({skill.steps.length})
+          <span className="text-[9px] sm:text-[10px] font-bold text-amber-300 drop-shadow">
+            الخطوات
           </span>
         </button>
 
@@ -315,11 +313,11 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           }}
           className="flex flex-col items-center gap-0.5 group relative"
         >
-          <div className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-950 transition-transform group-hover:scale-110">
-            <Sparkles className="w-5 h-5 text-amber-300" />
+          <div className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-950 transition-transform group-hover:scale-110">
+            <Sparkles className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-amber-300" />
           </div>
-          <span className="text-[10px] font-bold text-purple-300 drop-shadow">
-            اختبار +XP
+          <span className="text-[9px] sm:text-[10px] font-bold text-purple-300 drop-shadow">
+            اختبار
           </span>
         </button>
 
@@ -332,11 +330,11 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           }}
           className="flex flex-col items-center gap-0.5 group"
         >
-          <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-950 transition-transform group-hover:scale-110">
-            <HelpCircle className="w-5 h-5" />
+          <div className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-950 transition-transform group-hover:scale-110">
+            <HelpCircle className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </div>
-          <span className="text-[10px] font-bold text-indigo-300 drop-shadow">
-            اسأل الـ AI
+          <span className="text-[9px] sm:text-[10px] font-bold text-indigo-300 drop-shadow">
+            الـ AI
           </span>
         </button>
 
@@ -350,11 +348,11 @@ export const VideoItem: React.FC<VideoItemProps> = ({
             }}
             className="flex flex-col items-center gap-0.5 group"
           >
-            <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-950 transition-transform group-hover:scale-110">
-              <span className="text-sm font-bold">🧪</span>
+            <div className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-950 transition-transform group-hover:scale-110">
+              <span className="text-xs font-bold">🧪</span>
             </div>
-            <span className="text-[10px] font-bold text-emerald-300 drop-shadow">
-              تطبيق عملي
+            <span className="text-[9px] sm:text-[10px] font-bold text-emerald-300 drop-shadow">
+              تطبيق
             </span>
           </button>
         )}
@@ -368,10 +366,10 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           }}
           className="flex flex-col items-center gap-0.5 group"
         >
-          <div className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-cyan-400 flex items-center justify-center transition-transform group-hover:scale-110">
-            <Wrench className="w-4 h-4" />
+          <div className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-cyan-400 flex items-center justify-center transition-transform group-hover:scale-110">
+            <Wrench className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
-          <span className="text-[10px] font-bold text-neutral-300 drop-shadow">
+          <span className="text-[9px] sm:text-[10px] font-bold text-neutral-300 drop-shadow">
             المصادر
           </span>
         </button>
@@ -385,10 +383,10 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           }}
           className="flex flex-col items-center gap-0.5 group"
         >
-          <div className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white flex items-center justify-center transition-transform group-hover:scale-110">
-            <MessageSquare className="w-4 h-4" />
+          <div className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-white flex items-center justify-center transition-transform group-hover:scale-110">
+            <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
-          <span className="text-[10px] font-bold text-white drop-shadow">
+          <span className="text-[10px] sm:text-[11px] font-bold text-white drop-shadow">
             {skill.comments.length}
           </span>
         </button>
@@ -402,12 +400,12 @@ export const VideoItem: React.FC<VideoItemProps> = ({
           }}
           className="flex flex-col items-center gap-0.5 group"
         >
-          <div className={`w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center transition-transform group-hover:scale-110 ${
+          <div className={`w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 flex items-center justify-center transition-transform group-hover:scale-110 ${
             skill.isSaved ? 'text-amber-400 border-amber-400/40' : 'text-white'
           }`}>
-            <Bookmark className={`w-4 h-4 ${skill.isSaved ? 'fill-amber-400 text-amber-400' : ''}`} />
+            <Bookmark className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${skill.isSaved ? 'fill-amber-400 text-amber-400' : ''}`} />
           </div>
-          <span className="text-[10px] font-bold text-neutral-300 drop-shadow">
+          <span className="text-[9px] sm:text-[10px] font-bold text-neutral-300 drop-shadow">
             حفظ
           </span>
         </button>
@@ -416,14 +414,15 @@ export const VideoItem: React.FC<VideoItemProps> = ({
         <button
           onClick={(e) => {
             e.stopPropagation();
+            sound.playPop();
             onShare(skill);
           }}
           className="flex flex-col items-center gap-0.5 group"
         >
-          <div className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white flex items-center justify-center transition-transform group-hover:scale-110">
-            <Share2 className="w-4 h-4" />
+          <div className="w-8.5 h-8.5 sm:w-9.5 sm:h-9.5 rounded-full bg-black/70 backdrop-blur-md border border-white/10 text-white flex items-center justify-center transition-transform group-hover:scale-110">
+            <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
-          <span className="text-[10px] font-bold text-neutral-300 drop-shadow">
+          <span className="text-[9px] sm:text-[10px] font-bold text-neutral-300 drop-shadow">
             مشاركة
           </span>
         </button>
@@ -451,21 +450,21 @@ export const VideoItem: React.FC<VideoItemProps> = ({
         )}
       </div>
 
-      {/* Bottom Information Overlay */}
-      <div className="absolute bottom-4 left-4 right-16 z-10 text-white space-y-2 pointer-events-none">
+      {/* Bottom Information Overlay (Placed on the right side in RTL, strictly avoiding the side rail) */}
+      <div className="absolute bottom-2.5 sm:bottom-4 right-2.5 left-14 sm:right-4 sm:left-18 z-10 text-white space-y-1.5 pointer-events-none pb-1">
         {/* Active Caption / Highlight Banner */}
         {activeCaption && (
-          <div className="bg-black/75 backdrop-blur-md border border-white/15 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold text-emerald-300 leading-snug w-fit max-w-[90%] shadow-lg">
+          <div className="bg-black/80 backdrop-blur-md border border-white/15 px-2.5 py-1 rounded-xl text-xs font-semibold text-emerald-300 leading-snug w-fit max-w-[90%] shadow-lg pointer-events-auto">
             💬 {activeCaption}
           </div>
         )}
 
         {/* Creator Handle & Verified */}
         <div
-          className="flex items-center gap-2 pointer-events-auto cursor-pointer"
+          className="flex items-center gap-1.5 pointer-events-auto cursor-pointer flex-wrap"
           onClick={() => onOpenProfile && onOpenProfile(skill.creator)}
         >
-          <span className="font-bold text-sm text-white drop-shadow hover:underline">
+          <span className="font-bold text-xs sm:text-sm text-white drop-shadow hover:underline">
             {skill.creator.name}
           </span>
           {skill.creator.isVerified && (
@@ -473,27 +472,27 @@ export const VideoItem: React.FC<VideoItemProps> = ({
               ✓ موثق
             </span>
           )}
-          <span className="text-xs text-neutral-400 font-mono">
+          <span className="text-[11px] sm:text-xs text-neutral-400 font-mono" dir="ltr">
             {skill.creator.handle}
           </span>
         </div>
 
         {/* Skill Title */}
-        <h2 className="text-sm sm:text-base font-extrabold text-white leading-snug drop-shadow line-clamp-2">
+        <h2 className="text-xs sm:text-sm md:text-base font-extrabold text-white leading-tight drop-shadow line-clamp-2">
           {skill.title}
         </h2>
 
         {/* Skill Summary */}
-        <p className="text-xs text-neutral-300 line-clamp-2 leading-relaxed drop-shadow">
+        <p className="text-[11px] sm:text-xs text-neutral-300 line-clamp-2 leading-tight drop-shadow">
           {skill.summary}
         </p>
 
         {/* Tags */}
-        <div className="flex flex-wrap gap-1.5 pt-1">
+        <div className="flex flex-wrap gap-1 pt-0.5">
           {skill.tags.map((t, idx) => (
             <span
               key={idx}
-              className="text-[11px] font-semibold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/20"
+              className="text-[10px] sm:text-[11px] font-semibold text-emerald-300 bg-black/60 px-1.5 py-0.5 rounded border border-emerald-500/20 whitespace-nowrap"
             >
               #{t}
             </span>

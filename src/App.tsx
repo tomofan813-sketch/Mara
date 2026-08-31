@@ -360,7 +360,7 @@ function MainAppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-neutral-100 flex flex-col justify-between overflow-hidden font-sans select-none antialiased">
+    <div className="h-screen h-[100dvh] w-full bg-black text-neutral-100 flex flex-col overflow-hidden font-sans select-none antialiased">
       {/* Top Fixed Header Navbar */}
       <Navbar
         selectedCategory={selectedCategory}
@@ -390,15 +390,15 @@ function MainAppContent() {
         onSearchChange={setSearchQuery}
       />
 
-      {/* Main Feed Container (Vertically Centered TikTok Style) */}
+      {/* Main Feed Container (Full Screen Mobile & Sleek Centered Desktop) */}
       <main
-        className="flex-1 pt-24 pb-6 flex items-center justify-center relative w-full h-[calc(100vh-6rem)] overflow-hidden px-0 sm:px-4"
+        className="flex-1 w-full h-[calc(100dvh-82px)] sm:h-[calc(100dvh-94px)] pt-[calc(env(safe-area-inset-top,0px)+82px)] sm:pt-24 pb-[env(safe-area-inset-bottom,0px)] sm:pb-3 flex items-stretch sm:items-center justify-center relative overflow-hidden px-0 sm:px-4"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onWheel={handleWheel}
       >
         {filteredSkills.length === 0 ? (
-          <div className="text-center p-8 bg-neutral-900/80 border border-neutral-800 rounded-3xl max-w-sm mx-auto shadow-2xl">
+          <div className="text-center p-8 bg-neutral-900/80 border border-neutral-800 rounded-3xl max-w-sm mx-auto shadow-2xl my-auto">
             <Sparkles className="w-12 h-12 text-emerald-400 mx-auto mb-3 animate-pulse" />
             <h3 className="text-base font-bold text-white mb-1">لا توجد مهارات في هذا القسم حالياً</h3>
             <p className="text-xs text-neutral-400 mb-4">كن أول من ينشر مهارة أو درس فيديو في هذا التصنيف!</p>
@@ -413,7 +413,7 @@ function MainAppContent() {
             </button>
           </div>
         ) : (
-          <div className="w-full h-full max-w-md mx-auto flex items-center justify-center">
+          <div className="w-full h-full sm:max-w-md mx-auto flex items-center justify-center relative">
             {activeSkill && (
               <VideoItem
                 key={activeSkill.id}

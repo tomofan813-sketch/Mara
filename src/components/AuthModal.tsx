@@ -1,6 +1,19 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mail, Lock, User, AtSign, LogIn, UserPlus, Sparkles, ShieldCheck } from 'lucide-react';
+import { 
+  X, 
+  Mail, 
+  Lock, 
+  User, 
+  AtSign, 
+  LogIn, 
+  UserPlus, 
+  Sparkles, 
+  ShieldCheck, 
+  AlertTriangle,
+  ExternalLink,
+  Chrome
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { sound } from '../utils/audio';
 
@@ -10,55 +23,105 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  const { loginWithEmail, registerWithEmail, loginGuest } = useAuth();
+  const { loginWithEmail, registerWithEmail, loginWithGoogle, loginGuest } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [handle, setHandle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isOperationNotAllowed, setIsOperationNotAllowed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit迷 = async (e: React.FormEvent) => {
+  const mapAuthError = (err: any): string => {
+    const code = err?.code || '';
+    switch (code) {
+      case 'auth/operation-not-allowed':
+        setIsOperationNotAllowed(true);
+        return 'تسجيل الدخول بالبريد الإلكتروني (Email/Password) غير مفعّل بعد في إعدادات Firebase Console لهذا المشروع. يرجى تفعيله من لوحة تحكم Firebase.';
+      case 'auth/email-already-in-use':
+        return 'هذا البريد الإلكتروني مسجل مسبقاً. يرجى التبديل إلى "تسجيل الدخول".';
+      case 'auth/invalid-email':
+        return 'عنوان البريد الإلكتروني غير صالح. يرجى كتابة بريد إلكتروني صحيح.';
+      case 'auth/weak-password':
+        return 'كلمة المرور ضعيفة. يجب أن تتكون من 6 خانات على الأقل.';
+      case 'auth/user-not-found':
+        return 'لم يتم العثور على أي حساب مسجل بهذا البريد الإلكتروني.';
+      case 'auth/wrong-password':
+        return 'كلمة المرور غير صحيحة. يرجى التأكد وإعادة المحاولة.';
+      case 'auth/invalid-credential':
+        return 'بيانات الدخول غير صحيحة. يرجى التحقق من البريد وكلمة المرور.';
+      case 'auth/user-disabled':
+        return 'تم إيقاف هذا الحساب من قبل إدارة المنصة.';
+      case 'auth/too-many-requests':
+        return 'تم حظر المحاولات مؤقتاً بسبب كثرة الطلبات. يرجى الانتظار دقيقة ثم المحاولة مجدداً.';
+      case 'auth/network-request-failed':
+        return 'تعذر الاتصال بخوادم Firebase. يرجى التأكد من اتصالك بالإنترنت.';
+      case 'auth/popup-closed-by-user':
+        return 'تم إغلاق نافذة تسجيل الدخول قبل اكتمال العملية.';
+      default:
+        return err?.message || 'حدث خطأ أثناء الاتصال بنظام المصادقة. يرجى المحاولة لاحقاً.';
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsOperationNotAllowed(false);
     setIsLoading(true);
     sound.playPop();
 
     try {
       if (mode === 'login') {
-        if (!email || !password) {
+        if (!email.trim() || !password) {
           setError('يرجى إدخال البريد الإلكتروني وكلمة المرور');
           setIsLoading(false);
           return;
         }
         await loginWithEmail(email, password);
       } else {
-        if (!email || !password || !name) {
-          setError('يرجى ملء جميع الحقول المطلوبة');
+        if (!email.trim() || !password || !name.trim()) {
+          setError('يرجى ملء جميع الحقول المطلوبة (الاسم، البريد، كلمة المرور)');
           setIsLoading(false);
           return;
         }
         if (password.length < 6) {
-          setError('كلمة المرور يجب ألا تقل عن 6 أحرف');
+          setError('كلمة المرور يجب ألا تقل عن 6 خانات');
           setIsLoading(false);
           return;
         }
-        await registerWithEmail(email, password, name, handle || `@${name.toLowerCase().replace(/\s+/g, '_')}`);
+        await registerWithEmail(
+          email, 
+          password, 
+          name, 
+          handle || `@${name.toLowerCase().replace(/\s+/g, '_')}`
+        );
       }
       sound.playLevelUp();
       onClose();
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setError('بيانات الدخول غير صحيحة، يرجى التحقق وإعادة المحاولة.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('هذا البريد مسجل مسبقاً، يرجى تسجيل الدخول.');
-      } else {
-        setError(err.message || 'حدث خطأ أثناء عملية المصادقة.');
-      }
+      console.error('Firebase Auth Error:', err);
+      const friendlyMsg夺 = mapAuthError(err);
+      setError(friendlyMsg夺);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    sound.playPop();
+    setError(null);
+    setIsOperationNotAllowed(false);
+    setIsLoading(true);
+    try {
+      await loginWithGoogle();
+      sound.playSuccess();
+      onClose();
+    } catch (err: any) {
+      console.error('Google Sign In Error:', err);
+      setError(mapAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -66,13 +129,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   const handleQuickGuest = async () => {
     sound.playPop();
+    setError(null);
+    setIsOperationNotAllowed(false);
     setIsLoading(true);
     try {
       await loginGuest();
       sound.playSuccess();
       onClose();
-    } catch (e) {
-      setError('تعذر تسجيل الدخول كضيف حالياً.');
+    } catch (err: any) {
+      console.error('Guest login error:', err);
+      setError(mapAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +151,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl overflow-hidden"
+          className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto no-scrollbar"
         >
           {/* Decorative Glow */}
           <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -103,15 +169,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </button>
 
           {/* Header */}
-          <div className="text-center mb-6 pt-2">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-500 text-black font-black text-xl mb-3 shadow-lg shadow-emerald-950">
+          <div className="text-center mb-5 pt-2">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-indigo-500 text-black font-black text-xl mb-2.5 shadow-lg shadow-emerald-950">
               م
             </div>
             <h2 className="text-xl font-bold text-white">
               {mode === 'login' ? 'تسجيل الدخول إلى مهارة' : 'إنشاء حساب جديد في مهارة'}
             </h2>
             <p className="text-xs text-neutral-400 mt-1">
-              شارك مهاراتك وتفاعل مع آلاف المتعلمين وصناع المحتوى
+              شارك مهاراتك وتفاعل مع مجتمع المتعلمين وصناع المحتوى
             </p>
           </div>
 
@@ -120,20 +186,56 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium"
+              className="mb-4 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs font-medium space-y-2"
             >
-              {error}
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 leading-relaxed">{error}</div>
+              </div>
+
+              {/* Instructions if operation not allowed */}
+              {isOperationNotAllowed && (
+                <div className="p-3 bg-neutral-950/80 rounded-xl border border-rose-500/20 text-neutral-300 text-[11px] space-y-1.5 mt-2">
+                  <div className="font-bold text-amber-300 flex items-center gap-1">
+                    <span>💡 خطوات تفعيل البريد وكلمة المرور في Firebase:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-neutral-300 pr-1 leading-normal">
+                    <li>افتح <strong>Firebase Console</strong> لمشروعك.</li>
+                    <li>من القائمة الجانبية اختر <strong>Authentication</strong>.</li>
+                    <li>انقر على تبويب <strong>Sign-in method</strong>.</li>
+                    <li>اختر <strong>Email/Password</strong> وقم بتفعيل خيار <strong>Enable</strong> ثم احفظ التغييرات (Save).</li>
+                  </ol>
+                </div>
+              )}
             </motion.div>
           )}
 
+          {/* Google Sign In Direct Option */}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full mb-3.5 py-2.5 px-4 bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 border border-neutral-200"
+          >
+            <Chrome className="w-4 h-4 text-indigo-600" />
+            <span>المتابعة باستخدام حساب Google</span>
+          </button>
+
+          <div className="relative flex items-center justify-center my-3.5">
+            <div className="border-t border-neutral-800 w-full" />
+            <span className="bg-neutral-900 px-3 text-[11px] text-neutral-500 whitespace-nowrap">أو عبر البريد الإلكتروني</span>
+            <div className="border-t border-neutral-800 w-full" />
+          </div>
+
           {/* Tabs */}
-          <div className="flex bg-neutral-950/80 p-1 rounded-2xl mb-5 border border-neutral-800">
+          <div className="flex bg-neutral-950/80 p-1 rounded-2xl mb-4 border border-neutral-800">
             <button
               type="button"
               onClick={() => {
                 sound.playPop();
                 setMode('login');
                 setError(null);
+                setIsOperationNotAllowed(false);
               }}
               className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                 mode === 'login'
@@ -149,6 +251,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 sound.playPop();
                 setMode('register');
                 setError(null);
+                setIsOperationNotAllowed(false);
               }}
               className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${
                 mode === 'register'
@@ -161,7 +264,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit迷} className="space-y-3.5">
+          <form onSubmit={handleSubmit} className="space-y-3">
             {mode === 'register' && (
               <>
                 <div>
@@ -236,7 +339,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-emerald-950 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full mt-3 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs rounded-xl shadow-lg shadow-emerald-950 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isLoading ? (
                 <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
@@ -254,15 +357,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </button>
           </form>
 
-          {/* Quick Demo Login Hint for Admin */}
-          <div className="mt-4 pt-4 border-t border-neutral-800 flex items-center justify-between text-[11px]">
+          {/* Quick Demo Login Hint & Status */}
+          <div className="mt-4 pt-3.5 border-t border-neutral-800 flex items-center justify-between text-[11px]">
             <button
               type="button"
               onClick={handleQuickGuest}
               className="text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
             >
               <Sparkles className="w-3 h-3 text-indigo-400" />
-              <span>متابعة كزائر سريع</span>
+              <span>متابعة كزائر</span>
             </button>
 
             <span className="text-neutral-500 flex items-center gap-1">

@@ -9,6 +9,8 @@ import {
   createUserWithEmailAndPassword, 
   signOut as fbSignOut, 
   signInAnonymously,
+  signInWithPopup,
+  GoogleAuthProvider,
   updateProfile,
   User as FirebaseUser
 } from 'firebase/auth';
@@ -23,6 +25,7 @@ interface AuthContextType {
   isLoading: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, name: string, handle: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   loginGuest: () => Promise<void>;
   logout: () => Promise<void>;
   updateCurrentProfile: (data: Partial<UserProfile>) => Promise<void>;
@@ -36,18 +39,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchProfile = async (uid: string) => {
+  const fetchProfile = async (uid: string, fallbackUser?: FirebaseUser) => {
     try {
       const p = await getUserProfile(uid);
       if (p) {
         setUserProfile(p);
       } else {
-        // Auto initialize profile
+        const u = fallbackUser || auth.currentUser;
+        const defaultName = u?.displayName || 'مستخدم مهارة';
+        const defaultHandle = `@user_${uid.slice(0, 5)}`;
+        const defaultAvatar = u?.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${uid}`;
+
         const created = await createOrUpdateUserProfile({
           uid,
-          name: auth.currentUser?.displayName || 'مستخدم مهارة',
-          email: auth.currentUser?.email || '',
-          handle: `@user_${uid.slice(0, 5)}`,
+          name: defaultName,
+          email: u?.email || '',
+          handle: defaultHandle,
+          avatar: defaultAvatar,
+          role: u?.email === 'admin@mahara.app' ? 'admin' : 'user',
         });
         setUserProfile(created);
       }
@@ -60,21 +69,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsub = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
-        await fetchProfile(user.uid);
+        await fetchProfile(user.uid, user);
       } else {
-        // Automatically sign in as a demo/guest user so app is immediately usable
-        try {
-          const cred = await signInAnonymously(auth);
-          await createOrUpdateUserProfile({
-            uid: cred.user.uid,
-            name: 'متعلم جديد 🚀',
-            handle: `@learner_${cred.user.uid.slice(0, 4)}`,
-            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-          });
-          await fetchProfile(cred.user.uid);
-        } catch (err) {
-          console.log('Anonymous sign in notice:', err);
-        }
+        setUserProfile(null);
       }
       setIsLoading(false);
     });
@@ -86,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const res = await signInWithEmailAndPassword(auth, email.trim(), pass);
-      await fetchProfile(res.user.uid);
+      await fetchProfile(res.user.uid, res.user);
     } finally {
       setIsLoading(false);
     }
@@ -96,12 +93,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const res = await createUserWithEmailAndPassword(auth, email.trim(), pass);
-      await updateProfile(res.user, { displayName: name });
+      if (name.trim()) {
+        try {
+          await updateProfile(res.user, { displayName: name.trim() });
+        } catch (nameErr) {
+          console.warn('Could not update displayName:', nameErr);
+        }
+      }
+      const formattedHandle = handle.trim() 
+        ? (handle.startsWith('@') ? handle.trim() : `@${handle.trim()}`)
+        : `@${name.trim().toLowerCase().replace(/\s+/g, '_') || res.user.uid.slice(0, 5)}`;
+
       const newProfile = await createOrUpdateUserProfile({
         uid: res.user.uid,
         email: email.trim(),
-        name: name.trim(),
-        handle: handle.startsWith('@') ? handle.trim() : `@${handle.trim()}`,
+        name: name.trim() || 'صانع مهارة',
+        handle: formattedHandle,
         avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${res.user.uid}`,
         role: email.trim() === 'admin@mahara.app' ? 'admin' : 'user',
       });
@@ -111,11 +118,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async () => {
+    setIsLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      const res = await signInWithPopup(auth, provider);
+      await fetchProfile(res.user.uid, res.user);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const loginGuest = async () => {
     setIsLoading(true);
     try {
       const res = await signInAnonymously(auth);
-      await fetchProfile(res.user.uid);
+      await fetchProfile(res.user.uid, res.user);
     } finally {
       setIsLoading(false);
     }
@@ -124,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     await fbSignOut(auth);
     setUserProfile(null);
+    setCurrentUser(null);
   };
 
   const updateCurrentProfile = async (data: Partial<UserProfile>) => {
@@ -137,7 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async () => {
     if (currentUser) {
-      await fetchProfile(currentUser.uid);
+      await fetchProfile(currentUser.uid, currentUser);
     }
   };
 
@@ -149,6 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         loginWithEmail,
         registerWithEmail,
+        loginWithGoogle,
         loginGuest,
         logout,
         updateCurrentProfile,

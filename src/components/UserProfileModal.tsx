@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -18,7 +18,12 @@ import {
   Trash2,
   UserCheck,
   Zap,
-  Play
+  Play,
+  Camera,
+  RotateCcw,
+  Upload,
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { UserProfile } from '../services/firebase';
 import { SkillVideo } from '../types';
@@ -28,6 +33,48 @@ import { sound } from '../utils/audio';
 
 const FALLBACK_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80';
 const FALLBACK_POSTER = 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=80';
+
+// Helper to resize and compress selected image files to optimized Base64
+async function compressImageFile(file: File, maxWidth = 480, maxHeight = 480, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export interface UserProfileModalProps {
   isOpen: boolean;
@@ -57,6 +104,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [isFollowing, setIsFollowing] = useState(false);
   const [isLoadingFollow, setIsLoadingFollow] = useState(false);
   const [avatarSrc, setAvatarSrc] = useState<string>(FALLBACK_AVATAR);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoSuccessToast, setPhotoSuccessToast] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Compute profile data safely with bulletproof fallback values
   const isMe = !targetProfile || (currentUser?.uid && (targetProfile.uid === currentUser.uid || targetProfile.handle === myProfile?.handle));
@@ -111,10 +162,73 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         bio: editBio.trim() || resolvedBio,
         avatar: editAvatar.trim() || resolvedAvatar,
       });
+      setPhotoSuccessToast('تم حفظ بيانات الملف الشخصي بنجاح!');
+      setTimeout(() => setPhotoSuccessToast(null), 3000);
     } catch (e) {
       console.error('Profile update error:', e);
     }
     setIsEditing(false);
+  };
+
+  // Open file picker for picking photo from phone/device
+  const handleOpenPhotoPicker = () => {
+    if (!isMe) return;
+    sound.playPop();
+    fileInputRef.current?.click();
+  };
+
+  // Handle selected photo file from device
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingPhoto(true);
+    sound.playPop();
+
+    try {
+      const compressedDataUrl = await compressImageFile(file);
+      setAvatarSrc(compressedDataUrl);
+      setEditAvatar(compressedDataUrl);
+
+      // Save directly to Firebase & Local session
+      await updateCurrentProfile({
+        avatar: compressedDataUrl
+      });
+
+      sound.playSuccess();
+      setPhotoSuccessToast('تم تغيير وحفظ صورتك الشخصية بنجاح! 📸');
+      setTimeout(() => setPhotoSuccessToast(null), 3500);
+    } catch (err) {
+      console.error('Photo upload error:', err);
+      alert('حدث خطأ أثناء تحميل الصورة. يرجى تجربة صورة أخرى.');
+    } finally {
+      setIsUploadingPhoto(false);
+      // Reset input value to allow picking same image if needed
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Revert photo to default bot/avatar
+  const handleResetToDefaultAvatar = async () => {
+    if (!isMe) return;
+    sound.playPop();
+    const defaultAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${resolvedHandle}`;
+    
+    setIsUploadingPhoto(true);
+    try {
+      setAvatarSrc(defaultAvatar);
+      setEditAvatar(defaultAvatar);
+      await updateCurrentProfile({
+        avatar: defaultAvatar
+      });
+      sound.playSuccess();
+      setPhotoSuccessToast('تمت استعادة الصورة الافتراضية بنجاح 🔄');
+      setTimeout(() => setPhotoSuccessToast(null), 3000);
+    } catch (err) {
+      console.error('Reset avatar error:', err);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   const handleDeleteVideo = async (videoId: string, e: React.MouseEvent) => {
@@ -135,6 +249,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md"
         onClick={onClose}
       >
+        {/* Hidden File Input for Device Gallery / Camera Photo Selection */}
+        {isMe && (
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handlePhotoFileChange}
+            accept="image/*"
+            className="hidden"
+          />
+        )}
+
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -143,6 +268,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-lg max-h-[92vh] bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
         >
+          {/* Success Toast */}
+          <AnimatePresence>
+            {photoSuccessToast && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-black px-4 py-2 rounded-2xl font-bold text-xs shadow-2xl flex items-center gap-2 border border-emerald-400"
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>{photoSuccessToast}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Top Banner */}
           <div className="h-28 sm:h-32 bg-gradient-to-r from-emerald-600 via-teal-700 to-indigo-900 relative flex-shrink-0">
             {/* Top Navigation Controls */}
@@ -193,34 +333,74 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           {/* Profile Header Content */}
           <div className="px-5 pt-0 pb-3 relative flex-shrink-0 border-b border-neutral-800/90 bg-neutral-900">
             <div className="flex justify-between items-end -mt-10 sm:-mt-12 mb-3">
-              {/* Avatar with Error Handling */}
-              <div className="relative">
-                <img
-                  src={avatarSrc}
-                  onError={() => setAvatarSrc(FALLBACK_AVATAR)}
-                  alt={resolvedName}
-                  className="w-18 h-18 sm:w-22 sm:h-22 rounded-2xl border-4 border-neutral-900 object-cover shadow-xl bg-neutral-800"
-                />
+              {/* Avatar with Camera Overlay & Error Handling */}
+              <div className="relative group">
+                <div 
+                  onClick={isMe ? handleOpenPhotoPicker : undefined}
+                  className={`relative rounded-2xl overflow-hidden ${isMe ? 'cursor-pointer' : ''}`}
+                  title={isMe ? 'تغيير الصورة الشخصية' : undefined}
+                >
+                  <img
+                    src={avatarSrc}
+                    onError={() => setAvatarSrc(FALLBACK_AVATAR)}
+                    alt={resolvedName}
+                    className="w-18 h-18 sm:w-22 sm:h-22 rounded-2xl border-4 border-neutral-900 object-cover shadow-xl bg-neutral-800 transition-transform group-hover:scale-105"
+                  />
+                  
+                  {/* Camera overlay on hover/tap for profile owner */}
+                  {isMe && (
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-bold">
+                      {isUploadingPhoto ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-emerald-400" />
+                      ) : (
+                        <>
+                          <Camera className="w-5 h-5 text-emerald-400 mb-0.5" />
+                          <span>تغيير</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Permanent Camera Badge Button for Quick Mobile Access */}
+                {isMe && (
+                  <button
+                    type="button"
+                    onClick={handleOpenPhotoPicker}
+                    disabled={isUploadingPhoto}
+                    className="absolute -bottom-1.5 -left-1.5 p-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg border-2 border-neutral-900 transition-all hover:scale-110 flex items-center justify-center z-20"
+                    title="اختر صورة من الهاتف أو المعرض"
+                  >
+                    {isUploadingPhoto ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Camera className="w-3.5 h-3.5 stroke-[2.5]" />
+                    )}
+                  </button>
+                )}
+
                 {resolvedIsVerified && (
-                  <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1 rounded-full shadow-lg" title="صانع موثق">
+                  <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-black p-1 rounded-full shadow-lg z-10" title="صانع موثق">
                     <Check className="w-3 h-3 stroke-[3]" />
                   </div>
                 )}
               </div>
 
-              {/* Action Buttons: Edit or Follow */}
-              <div>
+              {/* Action Buttons: Edit or Follow & Photo controls */}
+              <div className="flex items-center gap-2">
                 {isMe ? (
-                  <button
-                    onClick={() => {
-                      sound.playPop();
-                      setIsEditing(!isEditing);
-                    }}
-                    className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold border border-neutral-700 transition-colors shadow-sm"
-                  >
-                    <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{isEditing ? 'إلغاء التعديل' : 'تعديل الملف'}</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={() => {
+                        sound.playPop();
+                        setIsEditing(!isEditing);
+                      }}
+                      className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold border border-neutral-700 transition-colors shadow-sm"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>{isEditing ? 'إلغاء التعديل' : 'تعديل الملف'}</span>
+                    </button>
+                  </>
                 ) : (
                   <button
                     onClick={handleFollowToggle}
@@ -247,9 +427,48 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
             </div>
 
-            {/* Profile Editing Form */}
+            {/* Profile Editing Form with Photo Management */}
             {isEditing ? (
               <div className="space-y-2.5 my-2 p-3 bg-neutral-950 rounded-2xl border border-neutral-800 text-xs">
+                {/* Photo Management Row inside Edit Form */}
+                <div className="p-2.5 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <img 
+                      src={avatarSrc} 
+                      onError={() => setAvatarSrc(FALLBACK_AVATAR)} 
+                      alt="Avatar" 
+                      className="w-10 h-10 rounded-lg object-cover border border-neutral-700 bg-neutral-800"
+                    />
+                    <div>
+                      <span className="text-[11px] font-bold text-white block">صورة الملف الشخصي</span>
+                      <span className="text-[10px] text-neutral-400">اختر صورة من معرض الهاتف</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleOpenPhotoPicker}
+                      disabled={isUploadingPhoto}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold rounded-lg border border-emerald-500/40 text-[11px] transition-colors"
+                    >
+                      {isUploadingPhoto ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      <span>تغيير الصورة</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleResetToDefaultAvatar}
+                      disabled={isUploadingPhoto}
+                      className="flex items-center gap-1 px-2 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg border border-neutral-700 text-[10px] transition-colors"
+                      title="العودة للصورة الافتراضية"
+                    >
+                      <RotateCcw className="w-3 h-3 text-amber-400" />
+                      <span>افتراضية</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-[11px] text-neutral-400 block mb-1">الاسم الكامل</label>
                   <input
@@ -269,11 +488,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-neutral-400 block mb-1">رابط الصورة الرمزية (Avatar URL)</label>
+                  <label className="text-[11px] text-neutral-400 block mb-1">رابط الصورة المباشر (Avatar URL - اختياري)</label>
                   <input
                     type="text"
                     value={editAvatar}
-                    onChange={(e) => setEditAvatar(e.target.value)}
+                    onChange={(e) => {
+                      setEditAvatar(e.target.value);
+                      if (e.target.value.trim()) setAvatarSrc(e.target.value.trim());
+                    }}
+                    placeholder="https://..."
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-[11px] focus:border-emerald-500 focus:outline-none"
                   />
                 </div>

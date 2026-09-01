@@ -23,6 +23,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -36,6 +38,34 @@ class MainActivity : AppCompatActivity() {
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var fullScreenContainer: FrameLayout
+    
+    // File chooser callback for photo picker
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+
+    // Modern Android Photo Picker (Android 13+ and backported via Google Play Services)
+    // Does not require any runtime storage permissions (READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE)
+    private val photoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            fileChooserCallback?.onReceiveValue(arrayOf(uri))
+        } else {
+            fileChooserCallback?.onReceiveValue(null)
+        }
+        fileChooserCallback = null
+    }
+
+    // Fallback file picker for older devices without Photo Picker
+    private val legacyFilePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            fileChooserCallback?.onReceiveValue(arrayOf(uri))
+        } else {
+            fileChooserCallback?.onReceiveValue(null)
+        }
+        fileChooserCallback = null
+    }
 
     companion object {
         private const val TAG = "MaharaApp"
@@ -166,6 +196,32 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
+            // Modern Photo Picker trigger for <input type="file" accept="image/*">
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                this@MainActivity.fileChooserCallback?.onReceiveValue(null)
+                this@MainActivity.fileChooserCallback = filePathCallback
+
+                try {
+                    if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(this@MainActivity)) {
+                        photoPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    } else {
+                        legacyFilePickerLauncher.launch("image/*")
+                    }
+                    return true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error opening Photo Picker", e)
+                    this@MainActivity.fileChooserCallback?.onReceiveValue(null)
+                    this@MainActivity.fileChooserCallback = null
+                    return false
+                }
+            }
+
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                 if (customView != null) {
                     callback?.onCustomViewHidden()
@@ -210,6 +266,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (fileChooserCallback != null) {
+            fileChooserCallback?.onReceiveValue(null)
+            fileChooserCallback = null
+        }
         webView.destroy()
         super.onDestroy()
     }

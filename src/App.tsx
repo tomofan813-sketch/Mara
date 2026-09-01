@@ -83,6 +83,7 @@ function MainAppContent() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [selectedProfileForModal, setSelectedProfileForModal] = useState<any | null>(null);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [reportingVideo, setReportingVideo] = useState<SkillVideo | null>(null);
@@ -346,6 +347,12 @@ function MainAppContent() {
     }
   };
 
+  const handleOpenProfile = (creatorOrProfile?: any) => {
+    sound.playPop();
+    setSelectedProfileForModal(creatorOrProfile || null);
+    setIsProfileModalOpen(true);
+  };
+
   const handleQuizCompleted = (earnedXp: number) => {
     addXp(earnedXp);
     setUserProgress(prev => ({
@@ -383,7 +390,7 @@ function MainAppContent() {
           }
         }}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
-        onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenProfileModal={() => handleOpenProfile(null)}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
         searchQuery={searchQuery}
@@ -428,7 +435,7 @@ function MainAppContent() {
                 onOpenSandbox={() => setIsSandboxOpen(true)}
                 onOpenResources={() => setIsResourcesOpen(true)}
                 onOpenComments={() => setIsCommentsOpen(true)}
-                onOpenProfile={() => setIsProfileModalOpen(true)}
+                onOpenProfile={(creator) => handleOpenProfile(creator)}
                 onReportVideo={(v) => setReportingVideo(v)}
                 onToggleLike={handleToggleLike}
                 onToggleSave={handleToggleSave}
@@ -557,8 +564,41 @@ function MainAppContent() {
       {/* User Profile Modal */}
       <UserProfileModal
         isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        userSkills={skills.filter(s => s.creator.name === userProfile?.name || s.creator.handle === userProfile?.handle)}
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          setSelectedProfileForModal(null);
+        }}
+        targetProfile={selectedProfileForModal}
+        userSkills={skills.filter(s => {
+          if (selectedProfileForModal) {
+            return (
+              s.creator?.name === selectedProfileForModal.name ||
+              s.creator?.handle === selectedProfileForModal.handle
+            );
+          }
+          return (
+            s.creator?.name === userProfile?.name ||
+            s.creator?.handle === userProfile?.handle
+          );
+        })}
+        savedSkills={skills.filter(s => s.isSaved)}
+        onSelectSkill={(skillId) => {
+          const targetIndex = filteredSkills.findIndex(s => s.id === skillId);
+          if (targetIndex !== -1) {
+            setCurrentIndex(targetIndex);
+          } else {
+            const allIndex = skills.findIndex(s => s.id === skillId);
+            if (allIndex !== -1) {
+              setSelectedCategory('all');
+              setCurrentIndex(allIndex);
+            }
+          }
+          setIsProfileModalOpen(false);
+        }}
+        onOpenAdminPanel={() => {
+          setIsProfileModalOpen(false);
+          setIsAdminPanelOpen(true);
+        }}
       />
 
       {/* Admin Panel Modal */}

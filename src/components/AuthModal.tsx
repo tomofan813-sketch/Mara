@@ -58,7 +58,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     sendPasswordReset, 
     sendPhoneOtp, 
     confirmPhoneOtp, 
-    loginWithGoogle 
+    loginWithGoogle,
+    activeOtpAlert,
+    clearOtpAlert
   } = useAuth();
 
   // Mode: Sign In vs Sign Up
@@ -751,6 +753,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                           تغيير الرقم
                         </button>
                       </div>
+
+                      {activeOtpAlert && (
+                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
+                          <span className="font-mono text-[11px]">{activeOtpAlert}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const match = activeOtpAlert.match(/\d{6}/);
+                              if (match) setOtpCode(match[0]);
+                            }}
+                            className="px-2 py-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[10px] rounded-lg transition-all"
+                          >
+                            تعبئة الرمز
+                          </button>
+                        </div>
+                      )}
 
                       <div>
                         <label className="block text-[11px] font-semibold text-neutral-300 mb-1 text-center">

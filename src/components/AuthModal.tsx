@@ -133,56 +133,120 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   const currentCountry = COUNTRY_CODES.find((c) => c.code === countryCode) || COUNTRY_CODES[0];
 
-  const mapAuthError = (err: any): string => {
+  const mapPhoneAuthError = (err: any): string => {
     const code = err?.code || '';
     switch (code) {
       case 'auth/invalid-phone-number':
-        return 'رقم الهاتف غير صحيح، يرجى التأكد من الرقم والمحاولة مجدداً.';
+        return 'رقم الهاتف غير صالح، يرجى كتابة الرقم بالصيغة الصحيحة.';
       case 'auth/missing-phone-number':
-        return 'يرجى إدخال رقم الهاتف.';
+        return 'يرجى إدخال رقم الهاتف أولاً.';
       case 'auth/quota-exceeded':
-        return 'تم تجاوز حد الرسائل مؤقتاً، يرجى المحاولة لاحقاً أو تسجيل الدخول بالبريد.';
+        return 'تم استهلاك الحد المتاح لرسائل SMS مؤقتاً، يمكنك استخدام البريد الإلكتروني أو حساب Google.';
       case 'auth/invalid-verification-code':
-        return 'رمز التحقق غير صحيح، يرجى التأكد والمحاولة مجدداً.';
+        return 'رمز التحقق (OTP) غير صحيح، يرجى التأكد وإعادة المحاولة.';
       case 'auth/code-expired':
         return 'انتهت صلاحية رمز التحقق، يرجى طلب رمز جديد.';
-      case 'auth/email-already-in-use':
-        return 'البريد الإلكتروني مسجل مسبقاً، يمكنك تسجيل الدخول مباشرة.';
-      case 'auth/invalid-email':
-        return 'عنوان البريد الإلكتروني غير صحيح.';
-      case 'auth/weak-password':
-        return 'كلمة المرور يجب أن تكون من 6 خانات على الأقل.';
-      case 'auth/user-not-found':
-      case 'auth/wrong-password':
-      case 'auth/invalid-credential':
-        return 'بيانات الدخول غير صحيحة، يرجى التحقق وإعادة المحاولة.';
-      case 'auth/user-disabled':
-        return 'هذا الحساب معطل حالياً.';
+      case 'auth/session-expired':
+        return 'انتهت صلاحية جلسة التحقق، يرجى طلب رمز جديد.';
       case 'auth/too-many-requests':
-        return 'محاولات كثيرة، يرجى الانتظار قليلاً ثم المحاولة.';
-      case 'auth/popup-closed-by-user':
-        return 'تم إلغاء تسجيل الدخول.';
+        return 'تم حظر الطلبات مؤقتاً بسبب كثرة المحاولات، يرجى الانتظار دقيقة.';
+      case 'auth/captcha-check-failed':
+        return 'تعذر التحقق من الأمان (reCAPTCHA)، يرجى إعادة المحاولة.';
+      case 'auth/invalid-app-credential':
+      case 'auth/app-not-authorized':
+        return 'تعذر التحقق من أمان التطبيق لإرسال SMS، يمكنك استخدام البريد الإلكتروني أو حساب Google.';
+      case 'auth/operation-not-allowed':
+        return 'خدمة التحقق عبر الرسائل القصيرة غير متاحة حالياً.';
       case 'auth/network-request-failed':
         return 'تعذر الاتصال، يرجى التحقق من اتصال الإنترنت.';
       default:
-        return 'تعذر تسجيل الدخول، يرجى المحاولة مرة أخرى.';
+        return 'تعذر إرسال رمز التحقق، يرجى التأكد من الرقم والمحاولة مرة أخرى.';
+    }
+  };
+
+  const mapEmailAuthError = (err: any): string => {
+    const code = err?.code || '';
+    switch (code) {
+      case 'auth/email-already-in-use':
+        return 'هذا البريد الإلكتروني مسجل مسبقاً، يمكنك التبديل إلى "تسجيل الدخول".';
+      case 'auth/invalid-email':
+        return 'صيغة البريد الإلكتروني غير صحيحة.';
+      case 'auth/weak-password':
+        return 'كلمة المرور يجب أن تتكون من 6 خانات على الأقل.';
+      case 'auth/user-not-found':
+        return 'لم يتم العثور على حساب مسجل بهذا البريد الإلكتروني.';
+      case 'auth/wrong-password':
+        return 'كلمة المرور غير صحيحة.';
+      case 'auth/invalid-credential':
+        return 'البريد الإلكتروني أو كلمة المرور غير صحيحة.';
+      case 'auth/user-disabled':
+        return 'هذا الحساب تم إيقافه.';
+      case 'auth/too-many-requests':
+        return 'تم حظر الدخول مؤقتاً لكثرة المحاولات الخاطئة، يرجى الانتظار قليلاً.';
+      case 'auth/operation-not-allowed':
+        return 'خدمة تسجيل الدخول بالبريد الإلكتروني غير متاحة حالياً.';
+      case 'auth/network-request-failed':
+        return 'تعذر الاتصال، يرجى التحقق من اتصال الإنترنت.';
+      default:
+        return 'تعذر إتمام العملية، يرجى التحقق من البيانات والمحاولة مرة أخرى.';
+    }
+  };
+
+  const mapGoogleAuthError = (err: any): string => {
+    const code = err?.code || '';
+    switch (code) {
+      case 'auth/popup-closed-by-user':
+        return 'تم إغلاق نافذة تسجيل الدخول قبل الإكمال.';
+      case 'auth/popup-blocked':
+        return 'المتصفح حظر النافذة المنبثقة، يرجى السماح بالنوافذ المنبثقة والمحاولة مجدداً.';
+      case 'auth/cancelled-popup-request':
+        return 'تم إلغاء الطلب السابق.';
+      case 'auth/account-exists-with-different-credential':
+        return 'هذا الحساب مسجل بطريقة أخرى مسبقاً، يرجى الدخول بنفس الطريقة السابقة.';
+      case 'auth/unauthorized-domain':
+        return 'نطاق التطبيق غير مصرح به في إعدادات المصادقة.';
+      case 'auth/operation-not-allowed':
+        return 'خدمة المتابعة عبر Google غير متاحة حالياً.';
+      case 'auth/network-request-failed':
+        return 'تعذر الاتصال بخوادم Google، يرجى التحقق من اتصال الإنترنت.';
+      default:
+        return 'تعذر تسجيل الدخول بحساب Google، يرجى المحاولة مرة أخرى.';
     }
   };
 
   // Initialize reCAPTCHA verifier for Phone Auth
-  const getRecaptchaVerifier = (): RecaptchaVerifier => {
-    if (!recaptchaVerifierRef.current) {
-      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {
-          // reCAPTCHA solved
-        },
-        'expired-callback': () => {
-          setError('تعذر التحقق، يرجى إعادة المحاولة.');
-        },
-      });
+  const getRecaptchaVerifier = async (): Promise<RecaptchaVerifier> => {
+    if (recaptchaVerifierRef.current) {
+      try {
+        recaptchaVerifierRef.current.clear();
+      } catch (e) {
+        console.warn('Recaptcha clear warning:', e);
+      }
+      recaptchaVerifierRef.current = null;
     }
-    return recaptchaVerifierRef.current;
+
+    let container = document.getElementById('recaptcha-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'recaptcha-container';
+      document.body.appendChild(container);
+    }
+    container.innerHTML = '';
+
+    const verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+      size: 'invisible',
+      callback: () => {
+        // reCAPTCHA solved
+      },
+      'expired-callback': () => {
+        console.warn('[reCAPTCHA] expired');
+        setError('انتهت صلاحية التحقق الأمني، يرجى إعادة المحاولة.');
+      },
+    });
+
+    await verifier.render();
+    recaptchaVerifierRef.current = verifier;
+    return verifier;
   };
 
   // 1. Phone Auth: Send SMS OTP
@@ -208,7 +272,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     sound.playPop();
 
     try {
-      const verifier = getRecaptchaVerifier();
+      const verifier = await getRecaptchaVerifier();
       const confirmation = await sendPhoneOtp(fullPhone, verifier);
       setConfirmationResult(confirmation);
       setPhoneStep('otp');
@@ -216,7 +280,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setCanResend(false);
       sound.playSuccess();
     } catch (err: any) {
-      console.error('Phone send OTP error:', err);
+      console.error('[Firebase Phone Auth Error]', err?.code, err?.message, err);
       // Reset reCAPTCHA if failed
       if (recaptchaVerifierRef.current) {
         try {
@@ -226,7 +290,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         }
         recaptchaVerifierRef.current = null;
       }
-      setError(mapAuthError(err));
+      setError(mapPhoneAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -259,8 +323,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       sound.playLevelUp();
       onClose();
     } catch (err: any) {
-      console.error('Verify OTP error:', err);
-      setError(mapAuthError(err));
+      console.error('[Firebase Phone OTP Verify Error]', err?.code, err?.message, err);
+      setError(mapPhoneAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -301,8 +365,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       sound.playLevelUp();
       onClose();
     } catch (err: any) {
-      console.error('Email auth error:', err);
-      setError(mapAuthError(err));
+      console.error('[Firebase Email Auth Error]', err?.code, err?.message, err);
+      setError(mapEmailAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -324,8 +388,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       setResetSent(true);
       sound.playSuccess();
     } catch (err: any) {
-      console.error('Password reset error:', err);
-      setError(mapAuthError(err));
+      console.error('[Firebase Password Reset Error]', err?.code, err?.message, err);
+      setError(mapEmailAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -342,8 +406,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       sound.playLevelUp();
       onClose();
     } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      setError(mapAuthError(err));
+      console.error('[Firebase Google Auth Error]', err?.code, err?.message, err);
+      setError(mapGoogleAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -358,9 +422,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           exit={{ opacity: 0, scale: 0.96, y: 15 }}
           className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden max-h-[92vh] overflow-y-auto no-scrollbar"
         >
-          {/* Container for invisible reCAPTCHA */}
-          <div id="recaptcha-container" />
-
           {/* Decorative Glow */}
           <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />

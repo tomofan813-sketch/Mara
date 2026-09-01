@@ -21,7 +21,6 @@ import { useAuth } from '../context/AuthContext';
 import { sound } from '../utils/audio';
 import { auth } from '../services/firebase';
 import { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -90,10 +89,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   // Status & Error handling
   const [error, setError] = useState<string | null>(null);
-  const [providerErrorDetails, setProviderErrorDetails] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
+
+  // Reset errors when modal opens or closes
+  useEffect(() => {
+    if (!isOpen) {
+      setError(null);
+      setPhoneStep('input');
+      setOtpCode('');
+    }
+  }, [isOpen]);
 
   // Timer for OTP countdown
   useEffect(() => {
@@ -129,43 +136,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const mapAuthError = (err: any): string => {
     const code = err?.code || '';
     switch (code) {
-      case 'auth/operation-not-allowed':
-        setProviderErrorDetails(
-          'طريقة تسجيل الدخول المختارة (Sign-in Provider) غير مفعّلة في Firebase Console. يرجى تفعيلها من تبويب Authentication > Sign-in method.'
-        );
-        return 'طريقة تسجيل الدخول غير مفعّلة في إعدادات Firebase.';
       case 'auth/invalid-phone-number':
-        return 'رقم الهاتف المدخل غير صالح. يرجى التأكد من كتابة الرقم ورمز الدولة بشكل صحيح.';
+        return 'رقم الهاتف غير صحيح، يرجى التأكد من الرقم والمحاولة مجدداً.';
       case 'auth/missing-phone-number':
         return 'يرجى إدخال رقم الهاتف.';
       case 'auth/quota-exceeded':
-        return 'تم تجاوز الحصة اليومية لرسائل التحقق SMS. يرجى المحاولة لاحقاً أو استخدام البريد الإلكتروني/Google.';
+        return 'تم تجاوز حد الرسائل مؤقتاً، يرجى المحاولة لاحقاً أو تسجيل الدخول بالبريد.';
       case 'auth/invalid-verification-code':
-        return 'رمز التحقق (OTP) غير صحيح. يرجى التأكد من الرمز وإعادة المحاولة.';
+        return 'رمز التحقق غير صحيح، يرجى التأكد والمحاولة مجدداً.';
       case 'auth/code-expired':
-        return 'انتهت صلاحية رمز التحقق. يرجى طلب رمز جديد.';
+        return 'انتهت صلاحية رمز التحقق، يرجى طلب رمز جديد.';
       case 'auth/email-already-in-use':
-        return 'هذا البريد الإلكتروني مسجل مسبقاً. يمكنك التبديل إلى "تسجيل الدخول".';
+        return 'البريد الإلكتروني مسجل مسبقاً، يمكنك تسجيل الدخول مباشرة.';
       case 'auth/invalid-email':
         return 'عنوان البريد الإلكتروني غير صحيح.';
       case 'auth/weak-password':
-        return 'كلمة المرور ضعيفة جداً. يرجى إدخال 6 خانات على الأقل.';
+        return 'كلمة المرور يجب أن تكون من 6 خانات على الأقل.';
       case 'auth/user-not-found':
-        return 'لم يتم العثور على أي حساب مسجل بهذه البيانات.';
       case 'auth/wrong-password':
-        return 'كلمة المرور غير صحيحة.';
       case 'auth/invalid-credential':
-        return 'بيانات الدخول غير صحيحة. يرجى التحقق وإعادة المحاولة.';
+        return 'بيانات الدخول غير صحيحة، يرجى التحقق وإعادة المحاولة.';
       case 'auth/user-disabled':
-        return 'تم إيقاف هذا الحساب من قبل الإدارة.';
+        return 'هذا الحساب معطل حالياً.';
       case 'auth/too-many-requests':
-        return 'تم حظر الطلبات مؤقتاً بسبب كثرة المحاولات. يرجى الانتظار دقيقة.';
+        return 'محاولات كثيرة، يرجى الانتظار قليلاً ثم المحاولة.';
       case 'auth/popup-closed-by-user':
-        return 'تم إغلاق نافذة تسجيل الدخول قبل إتمام العملية.';
+        return 'تم إلغاء تسجيل الدخول.';
       case 'auth/network-request-failed':
-        return 'تعذر الاتصال بخوادم Firebase. يرجى التحقق من اتصال الإنترنت.';
+        return 'تعذر الاتصال، يرجى التحقق من اتصال الإنترنت.';
       default:
-        return err?.message || 'حدث خطأ في عملية المصادقة. يرجى المحاولة لاحقاً.';
+        return 'تعذر تسجيل الدخول، يرجى المحاولة مرة أخرى.';
     }
   };
 
@@ -178,7 +178,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           // reCAPTCHA solved
         },
         'expired-callback': () => {
-          setError('انتهت صلاحية التحقق الأمني (reCAPTCHA)، يرجى إعادة المحاولة.');
+          setError('تعذر التحقق، يرجى إعادة المحاولة.');
         },
       });
     }
@@ -189,7 +189,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const handleSendPhoneOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
-    setProviderErrorDetails(null);
 
     const cleanNum = phoneNumber.replace(/[^0-9]/g, '');
     if (!cleanNum || cleanNum.length < 7) {
@@ -237,7 +236,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!confirmationResult) {
-      setError('لم يتم العثور على جلسة تحقق نشطة. يرجى طلب الرمز مجدداً.');
+      setError('يرجى طلب رمز تحقق جديد.');
       return;
     }
 
@@ -271,7 +270,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setProviderErrorDetails(null);
     setIsLoading(true);
     sound.playPop();
 
@@ -285,7 +283,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         await loginWithEmail(email, password);
       } else {
         if (!email.trim() || !password || !name.trim()) {
-          setError('يرجى ملء جميع الحقول المطلوبة (الاسم، البريد، كلمة المرور)');
+          setError('يرجى ملء جميع الحقول المطلوبة');
           setIsLoading(false);
           return;
         }
@@ -336,7 +334,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   // 3. Google Sign-In
   const handleGoogleSignIn = async () => {
     setError(null);
-    setProviderErrorDetails(null);
     setIsLoading(true);
     sound.playPop();
 
@@ -372,6 +369,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           <button
             onClick={() => {
               sound.playPop();
+              setError(null);
               onClose();
             }}
             className="absolute top-4 left-4 p-2 text-neutral-400 hover:text-white rounded-full bg-neutral-800/60 hover:bg-neutral-800 transition-colors"
@@ -400,29 +398,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </p>
           </div>
 
-          {/* Error Notice */}
+          {/* Clean User-Facing Error Message */}
           {error && (
             <motion.div
-              initial={{ opacity: 0, y: -6 }}
+              initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-xs font-medium space-y-2"
+              className="mb-4 py-2.5 px-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs font-medium flex items-center gap-2"
             >
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 leading-relaxed">{error}</div>
-              </div>
-
-              {providerErrorDetails && (
-                <div className="p-2.5 bg-neutral-950/90 rounded-xl border border-rose-500/30 text-neutral-300 text-[11px] space-y-1 mt-1">
-                  <div className="font-bold text-amber-300">💡 للمسؤول: خطوات التفعيل في Firebase Console:</div>
-                  <ol className="list-decimal list-inside space-y-1 text-neutral-300 pr-1 leading-relaxed">
-                    <li>افتح <strong>Firebase Console</strong> للمشروع: <span className="font-mono text-emerald-400">{firebaseConfig.projectId}</span></li>
-                    <li>اختر <strong>Authentication</strong> ثم تبويب <strong>Sign-in method</strong>.</li>
-                    <li>فعّل الموفرات المطلوبة (<strong>Phone</strong> و <strong>Email/Password</strong> و <strong>Google</strong>).</li>
-                    <li>اضغط <strong>Save</strong>.</li>
-                  </ol>
-                </div>
-              )}
+              <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              <span className="flex-1 leading-snug">{error}</span>
             </motion.div>
           )}
 
@@ -907,13 +891,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
           {/* Footer Security Badge */}
           <div className="mt-4 pt-3 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-500">
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Firebase Auth سحابي حقيقي</span>
+              <span>تسجيل آمن ومشفر</span>
             </span>
 
-            <span className="font-mono text-[10px] text-neutral-400">
-              {firebaseConfig.projectId}
+            <span className="text-[10px] text-neutral-500 font-medium">
+              منصة مهارة
             </span>
           </div>
         </motion.div>

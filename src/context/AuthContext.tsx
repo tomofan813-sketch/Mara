@@ -8,9 +8,6 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut as fbSignOut, 
-  signInAnonymously,
-  signInWithPopup,
-  GoogleAuthProvider,
   updateProfile,
   User as FirebaseUser
 } from 'firebase/auth';
@@ -25,8 +22,6 @@ interface AuthContextType {
   isLoading: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, name: string, handle: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  loginGuest: () => Promise<void>;
   logout: () => Promise<void>;
   updateCurrentProfile: (data: Partial<UserProfile>) => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -118,27 +113,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginWithGoogle = async () => {
-    setIsLoading(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      const res = await signInWithPopup(auth, provider);
-      await fetchProfile(res.user.uid, res.user);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loginGuest = async () => {
-    setIsLoading(true);
-    try {
-      const res = await signInAnonymously(auth);
-      await fetchProfile(res.user.uid, res.user);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const logout = async () => {
     await fbSignOut(auth);
     setUserProfile(null);
@@ -168,8 +142,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         loginWithEmail,
         registerWithEmail,
-        loginWithGoogle,
-        loginGuest,
         logout,
         updateCurrentProfile,
         refreshProfile,
@@ -182,6 +154,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 };

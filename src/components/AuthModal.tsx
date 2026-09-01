@@ -8,14 +8,13 @@ import {
   AtSign, 
   LogIn, 
   UserPlus, 
-  Sparkles, 
   ShieldCheck, 
   AlertTriangle,
-  ExternalLink,
-  Chrome
+  Server
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { sound } from '../utils/audio';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -23,7 +22,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  const { loginWithEmail, registerWithEmail, loginWithGoogle, loginGuest } = useAuth();
+  const { loginWithEmail, registerWithEmail } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,7 +39,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     switch (code) {
       case 'auth/operation-not-allowed':
         setIsOperationNotAllowed(true);
-        return 'تسجيل الدخول بالبريد الإلكتروني (Email/Password) غير مفعّل بعد في إعدادات Firebase Console لهذا المشروع. يرجى تفعيله من لوحة تحكم Firebase.';
+        return 'طريقة تسجيل الدخول بالبريد الإلكتروني وكلمة المرور (Email/Password) غير مفعّلة في إعدادات مشروع Firebase. يرجى تفعيلها من Firebase Console.';
       case 'auth/email-already-in-use':
         return 'هذا البريد الإلكتروني مسجل مسبقاً. يرجى التبديل إلى "تسجيل الدخول".';
       case 'auth/invalid-email':
@@ -56,13 +55,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       case 'auth/user-disabled':
         return 'تم إيقاف هذا الحساب من قبل إدارة المنصة.';
       case 'auth/too-many-requests':
-        return 'تم حظر المحاولات مؤقتاً بسبب كثرة الطلبات. يرجى الانتظار دقيقة ثم المحاولة مجدداً.';
+        return 'تم حظر المحاولات مؤقتاً لكثرة الطلبات. يرجى الانتظار قليلاً ثم المحاولة.';
       case 'auth/network-request-failed':
         return 'تعذر الاتصال بخوادم Firebase. يرجى التأكد من اتصالك بالإنترنت.';
-      case 'auth/popup-closed-by-user':
-        return 'تم إغلاق نافذة تسجيل الدخول قبل اكتمال العملية.';
       default:
-        return err?.message || 'حدث خطأ أثناء الاتصال بنظام المصادقة. يرجى المحاولة لاحقاً.';
+        return 'حدث خطأ في المصادقة. يرجى التأكد من البيانات والمحاولة مجدداً.';
     }
   };
 
@@ -103,42 +100,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       onClose();
     } catch (err: any) {
       console.error('Firebase Auth Error:', err);
-      const friendlyMsg夺 = mapAuthError(err);
-      setError(friendlyMsg夺);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    sound.playPop();
-    setError(null);
-    setIsOperationNotAllowed(false);
-    setIsLoading(true);
-    try {
-      await loginWithGoogle();
-      sound.playSuccess();
-      onClose();
-    } catch (err: any) {
-      console.error('Google Sign In Error:', err);
-      setError(mapAuthError(err));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickGuest = async () => {
-    sound.playPop();
-    setError(null);
-    setIsOperationNotAllowed(false);
-    setIsLoading(true);
-    try {
-      await loginGuest();
-      sound.playSuccess();
-      onClose();
-    } catch (err: any) {
-      console.error('Guest login error:', err);
-      setError(mapAuthError(err));
+      const friendlyMsg = mapAuthError(err);
+      setError(friendlyMsg);
     } finally {
       setIsLoading(false);
     }
@@ -177,7 +140,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               {mode === 'login' ? 'تسجيل الدخول إلى مهارة' : 'إنشاء حساب جديد في مهارة'}
             </h2>
             <p className="text-xs text-neutral-400 mt-1">
-              شارك مهاراتك وتفاعل مع مجتمع المتعلمين وصناع المحتوى
+              عبر البريد الإلكتروني وكلمة المرور (Firebase Email/Password)
             </p>
           </div>
 
@@ -195,37 +158,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
               {/* Instructions if operation not allowed */}
               {isOperationNotAllowed && (
-                <div className="p-3 bg-neutral-950/80 rounded-xl border border-rose-500/20 text-neutral-300 text-[11px] space-y-1.5 mt-2">
+                <div className="p-3 bg-neutral-950/90 rounded-xl border border-rose-500/30 text-neutral-300 text-[11px] space-y-2 mt-2">
                   <div className="font-bold text-amber-300 flex items-center gap-1">
-                    <span>💡 خطوات تفعيل البريد وكلمة المرور في Firebase:</span>
+                    <span>خطوات تفعيل Email/Password في Firebase Console:</span>
                   </div>
-                  <ol className="list-decimal list-inside space-y-1 text-neutral-300 pr-1 leading-normal">
-                    <li>افتح <strong>Firebase Console</strong> لمشروعك.</li>
-                    <li>من القائمة الجانبية اختر <strong>Authentication</strong>.</li>
-                    <li>انقر على تبويب <strong>Sign-in method</strong>.</li>
-                    <li>اختر <strong>Email/Password</strong> وقم بتفعيل خيار <strong>Enable</strong> ثم احفظ التغييرات (Save).</li>
+                  <ol className="list-decimal list-inside space-y-1.5 text-neutral-300 pr-1 leading-relaxed">
+                    <li>
+                      الصفحة: افتح <strong>Firebase Console</strong> لمشروعك: <span className="font-mono text-emerald-400 select-all">{firebaseConfig.projectId}</span>
+                    </li>
+                    <li>
+                      المسار: من القائمة الجانبية اختر <strong>Authentication</strong> ثم اضغط على تبويب <strong>Sign-in method</strong>.
+                    </li>
+                    <li>
+                      الموفر: انقر على <strong>Email/Password</strong> من قائمة الموفرين (Sign-in providers).
+                    </li>
+                    <li>
+                      الإجراء: قم بتفعيل مفتاح <strong>Enable</strong> ثم اضغط زر <strong>Save (حفظ)</strong>.
+                    </li>
                   </ol>
                 </div>
               )}
             </motion.div>
           )}
-
-          {/* Google Sign In Direct Option */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={isLoading}
-            className="w-full mb-3.5 py-2.5 px-4 bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 border border-neutral-200"
-          >
-            <Chrome className="w-4 h-4 text-indigo-600" />
-            <span>المتابعة باستخدام حساب Google</span>
-          </button>
-
-          <div className="relative flex items-center justify-center my-3.5">
-            <div className="border-t border-neutral-800 w-full" />
-            <span className="bg-neutral-900 px-3 text-[11px] text-neutral-500 whitespace-nowrap">أو عبر البريد الإلكتروني</span>
-            <div className="border-t border-neutral-800 w-full" />
-          </div>
 
           {/* Tabs */}
           <div className="flex bg-neutral-950/80 p-1 rounded-2xl mb-4 border border-neutral-800">
@@ -357,20 +311,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </button>
           </form>
 
-          {/* Quick Demo Login Hint & Status */}
-          <div className="mt-4 pt-3.5 border-t border-neutral-800 flex items-center justify-between text-[11px]">
-            <button
-              type="button"
-              onClick={handleQuickGuest}
-              className="text-neutral-400 hover:text-white transition-colors flex items-center gap-1"
-            >
-              <Sparkles className="w-3 h-3 text-indigo-400" />
-              <span>متابعة كزائر</span>
-            </button>
+          {/* Project & Connection Info Footer */}
+          <div className="mt-4 pt-3.5 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-500">
+            <span className="flex items-center gap-1">
+              <Server className="w-3 h-3 text-neutral-400" />
+              <span>المشروع: <strong className="font-mono text-neutral-300">{firebaseConfig.projectId}</strong></span>
+            </span>
 
-            <span className="text-neutral-500 flex items-center gap-1">
+            <span className="flex items-center gap-1">
               <ShieldCheck className="w-3 h-3 text-emerald-400" />
-              <span>Firebase Auth سحابي حقيقي</span>
+              <span>Firebase Auth سحابي</span>
             </span>
           </div>
         </motion.div>

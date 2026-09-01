@@ -7,6 +7,12 @@ import {
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
+  sendPasswordResetEmail,
+  signInWithPhoneNumber,
+  signInWithPopup,
+  GoogleAuthProvider,
+  RecaptchaVerifier,
+  ConfirmationResult,
   signOut as fbSignOut, 
   updateProfile,
   User as FirebaseUser
@@ -22,6 +28,10 @@ interface AuthContextType {
   isLoading: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string, name: string, handle: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  sendPhoneOtp: (phoneNumber: string, recaptchaVerifier: RecaptchaVerifier) => Promise<ConfirmationResult>;
+  confirmPhoneOtp: (confirmationResult: ConfirmationResult, otpCode: string, name?: string, handle?: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   updateCurrentProfile: (data: Partial<UserProfile>) => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -49,8 +59,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           uid,
           name: defaultName,
           email: u?.email || '',
+          phoneNumber: u?.phoneNumber || '',
           handle: defaultHandle,
           avatar: defaultAvatar,
+          authProvider: u?.phoneNumber ? 'phone' : u?.email ? 'email' : 'google',
           role: u?.email === 'admin@mahara.app' ? 'admin' : 'user',
         });
         setUserProfile(created);
@@ -105,9 +117,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: name.trim() || 'صانع مهارة',
         handle: formattedHandle,
         avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${res.user.uid}`,
+        authProvider: 'email',
         role: email.trim() === 'admin@mahara.app' ? 'admin' : 'user',
       });
       setUserProfile(newProfile);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const sendPasswordReset = async (email: string) => {
+    setIsLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const sendPhoneOtp = async (phoneNumber: string, recaptchaVerifier: RecaptchaVerifier): Promise<ConfirmationResult> => {
+    setIsLoading(true);
+    try {
+      const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+      return confirmationResult;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const confirmPhoneOtp = async (
+    confirmationResult: ConfirmationResult, 
+    otpCode: string, 
+    name?: string, 
+    handle?: string
+  ) => {
+    setIsLoading(true);
+    try {
+      const res = await confirmationResult.confirm(otpCode);
+      const u = res.user;
+      const existing = await getUserProfile(u.uid);
+      if (!existing) {
+        const defaultName = name?.trim() || 'مستخدم مهارة';
+        const defaultHandle = handle?.trim() 
+          ? (handle.startsWith('@') ? handle.trim() : `@${handle.trim()}`)
+          : `@user_${u.uid.slice(0, 5)}`;
+        await createOrUpdateUserProfile({
+          uid: u.uid,
+          phoneNumber: u.phoneNumber || '',
+          name: defaultName,
+          handle: defaultHandle,
+          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${u.uid}`,
+          authProvider: 'phone',
+          role: 'user',
+        });
+      }
+      await fetchProfile(u.uid, u);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    setIsLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const res = await signInWithPopup(auth, provider);
+      const u = res.user;
+      const existing = await getUserProfile(u.uid);
+      if (!existing) {
+        const displayName = u.displayName || 'مستخدم Google';
+        const defaultHandle = `@${displayName.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 12) || 'user'}_${u.uid.slice(0, 4)}`;
+        const avatar = u.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.uid}`;
+        await createOrUpdateUserProfile({
+          uid: u.uid,
+          name: displayName,
+          email: u.email || '',
+          phoneNumber: u.phoneNumber || '',
+          avatar: avatar,
+          handle: defaultHandle,
+          authProvider: 'google',
+          role: u.email === 'admin@mahara.app' ? 'admin' : 'user',
+        });
+      }
+      await fetchProfile(u.uid, u);
     } finally {
       setIsLoading(false);
     }
@@ -142,6 +235,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         loginWithEmail,
         registerWithEmail,
+        sendPasswordReset,
+        sendPhoneOtp,
+        confirmPhoneOtp,
+        loginWithGoogle,
         logout,
         updateCurrentProfile,
         refreshProfile,

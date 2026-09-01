@@ -40,6 +40,8 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(defa
 export interface UserProfile {
   uid: string;
   email?: string;
+  phoneNumber?: string;
+  authProvider?: 'email' | 'phone' | 'google' | 'anonymous';
   name: string;
   handle: string;
   avatar: string;

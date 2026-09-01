@@ -76,9 +76,11 @@ export async function createOrUpdateUserProfile(profile: Partial<UserProfile> & 
     const newProfile: UserProfile = {
       uid: profile.uid,
       email: profile.email || '',
+      phoneNumber: profile.phoneNumber || '',
+      authProvider: profile.authProvider || (profile.phoneNumber ? 'phone' : profile.email ? 'email' : 'google'),
       name: profile.name || 'مستخدم مهارة',
       handle: profile.handle || `@user_${profile.uid.slice(0, 6)}`,
-      avatar: profile.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+      avatar: profile.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${profile.uid}`,
       bio: profile.bio || 'متعلم شغوف ومشارك في مجتمع مهارة 🚀',
       title: profile.title || 'طالب مهارات',
       isVerified: false,
@@ -97,8 +99,17 @@ export async function createOrUpdateUserProfile(profile: Partial<UserProfile> & 
     await setDoc(ref, newProfile);
     return newProfile;
   } else {
-    await updateDoc(ref, {
+    const existing = snap.data() as UserProfile;
+    const updates: Partial<UserProfile> = {
       ...profile,
+      // Preserve existing profile details if incoming are empty
+      name: profile.name || existing.name,
+      avatar: profile.avatar || existing.avatar,
+      email: profile.email || existing.email || '',
+      phoneNumber: profile.phoneNumber || existing.phoneNumber || '',
+    };
+    await updateDoc(ref, {
+      ...updates,
       updatedAt: serverTimestamp(),
     });
     return (await getDoc(ref)).data() as UserProfile;
